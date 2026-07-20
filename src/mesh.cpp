@@ -1,5 +1,9 @@
 #include "mesh.h"
 
+#include <glm/common.hpp>
+
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -115,4 +119,68 @@ Mesh load_obj_mesh(const std::filesystem::path& path)
             + path.string());
     }
     return mesh;
+}
+
+MeshBounds calculate_mesh_bounds(const Mesh& mesh)
+{
+    if (mesh.vertices.empty()) {
+        throw std::runtime_error("Cannot calculate bounds for an empty mesh.");
+    }
+
+    MeshBounds bounds {mesh.vertices.front(), mesh.vertices.front()};
+    for (const glm::vec3& vertex : mesh.vertices) {
+        bounds.min = glm::min(bounds.min, vertex);
+        bounds.max = glm::max(bounds.max, vertex);
+    }
+    return bounds;
+}
+
+ViewportFit calculate_viewport_fit(
+    const Mesh& mesh,
+    int viewport_width,
+    int viewport_height,
+    float viewport_coverage)
+{
+    if (viewport_width <= 0 || viewport_height <= 0) {
+        throw std::runtime_error("Viewport dimensions must be positive.");
+    }
+    if (!(viewport_coverage > 0.0F && viewport_coverage <= 1.0F)) {
+        throw std::runtime_error("Viewport coverage must be in (0, 1].");
+    }
+
+    ViewportFit fit;
+    fit.bounds = calculate_mesh_bounds(mesh);
+    fit.center = (fit.bounds.min + fit.bounds.max) * 0.5F;
+    fit.size = fit.bounds.max - fit.bounds.min;
+    const float largest_dimension =
+        std::max({fit.size.x, fit.size.y, fit.size.z});
+    if (largest_dimension <= std::numeric_limits<float>::epsilon()) {
+        throw std::runtime_error("Cannot fit a zero-size mesh to the viewport.");
+    }
+
+    const float smaller_viewport_dimension = static_cast<float>(
+        std::min(viewport_width, viewport_height));
+    fit.uniform_scale =
+        viewport_coverage * smaller_viewport_dimension / largest_dimension;
+    fit.translation = {
+        static_cast<float>(viewport_width) * 0.5F
+            - fit.center.x * fit.uniform_scale,
+        static_cast<float>(viewport_height) * 0.5F
+            - fit.center.y * fit.uniform_scale,
+        -fit.center.z * fit.uniform_scale,
+    };
+    if (std::abs(fit.translation.z)
+        <= std::numeric_limits<float>::epsilon()) {
+        fit.translation.z = 0.0F;
+    }
+    fit.viewport_width = viewport_width;
+    fit.viewport_height = viewport_height;
+    return fit;
+}
+
+glm::vec3 apply_viewport_fit(
+    const glm::vec3& vertex,
+    const ViewportFit& fit)
+{
+    return vertex * fit.uniform_scale + fit.translation;
 }

@@ -7,6 +7,51 @@ and records its validation and visual evidence here.
 
 ## Current Status
 
+### HW2 Task 2 - Normalization and Viewport Fitting
+
+**Goal.** Normalize arbitrary OBJ coordinate ranges with one uniform scale and
+center the mesh inside the current framebuffer without changing its
+proportions.
+
+**Implementation.** `calculate_mesh_bounds` visits every vertex to find the
+minimum and maximum coordinates. `calculate_viewport_fit` derives the center,
+size, and largest model dimension, then maps that largest dimension to 40% of
+the framebuffer's smaller dimension:
+
+```text
+uniform scale = 0.4 * min(viewport width, viewport height)
+                / largest model dimension
+translation = viewport center - mesh center * uniform scale
+fitted vertex = vertex * uniform scale + translation
+```
+
+The same scale is applied on all three axes, so the mesh cannot be stretched.
+The fit is recalculated whenever the GLFW framebuffer size changes, and the
+current pixels-per-model-unit scale is displayed in the window title. This
+CPU-side bounds calculation prepares compact transform data that the vertex
+shader will consume in the later GPU transformation milestone.
+
+**Validation.** The hidden validation checks the tetrahedron's known bounds,
+center, size, scale, and translation. It also transforms every vertex and
+verifies that all fitted X/Y coordinates remain inside the framebuffer:
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw2-task2
+```
+
+Verified Release output at 1280 x 720:
+
+```text
+OpenGL 4.1 initialized.
+Loaded OBJ task1_tetrahedron.obj: vertices=4 faces=4
+HW2 Task 2 viewport fit: bounds_min=(-1.0,-1.0,-1.0) bounds_max=(1.0,1.0,1.0) center=(0.0,0.0,0.0) size=(2.0,2.0,2.0) scale=144.0 translation=(640.0,360.0,0.0) fitted=yes
+HW2 Task 2 validation passed.
+```
+
+**Limitations.** This task verifies the transformation mathematically but does
+not draw the model yet. Task 3 will upload indexed geometry and apply the fit
+in the OpenGL wireframe pipeline.
+
 ### HW2 Task 1 - Loading and Inspecting 3D Data
 
 **Goal.** Load a small OBJ mesh, store its vertices and triangular faces, and
@@ -113,7 +158,7 @@ documentation, focused commit, and push are complete.
 
 - [x] Task 0: Integrate GLM (included in the OpenGL foundation)
 - [x] Task 1: Load OBJ data and display mesh information
-- [ ] Task 2: Calculate mesh bounds, normalization, and viewport fitting
+- [x] Task 2: Calculate mesh bounds, normalization, and viewport fitting
 - [ ] Task 3: Render an indexed orthographic wireframe mesh
 - [ ] Task 4: Add separate local and world transformation controls
 - [ ] Task 5: Apply model transformations in the vertex shader

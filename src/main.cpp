@@ -3,11 +3,14 @@
 
 #include "mesh.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -22,6 +25,7 @@ enum class ValidationMode {
     none,
     foundation,
     hw2_task1,
+    hw2_task2,
 };
 
 struct CommandLineOptions {
@@ -42,6 +46,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         }
         if (feature == "hw2-task1") {
             return {.validation = ValidationMode::hw2_task1, .valid = true};
+        }
+        if (feature == "hw2-task2") {
+            return {.validation = ValidationMode::hw2_task2, .valid = true};
         }
     }
 
@@ -100,6 +107,76 @@ bool validate_hw2_task1(const Mesh& mesh)
         && indices_are_valid;
 }
 
+bool nearly_equal(float left, float right, float tolerance = 0.001F)
+{
+    return std::abs(left - right) <= tolerance;
+}
+
+bool validate_hw2_task2(
+    const Mesh& mesh,
+    const ViewportFit& fit)
+{
+    bool vertices_fit = true;
+    for (const glm::vec3& vertex : mesh.vertices) {
+        const glm::vec3 fitted = apply_viewport_fit(vertex, fit);
+        vertices_fit = vertices_fit && fitted.x >= 0.0F
+            && fitted.x <= static_cast<float>(fit.viewport_width)
+            && fitted.y >= 0.0F
+            && fitted.y <= static_cast<float>(fit.viewport_height);
+    }
+
+    const glm::vec3 fitted_center =
+        apply_viewport_fit(fit.center, fit);
+    const float expected_scale = 0.4F
+        * static_cast<float>(
+            std::min(fit.viewport_width, fit.viewport_height))
+        / 2.0F;
+    const bool expected_values =
+        nearly_equal(fit.bounds.min.x, -1.0F)
+        && nearly_equal(fit.bounds.min.y, -1.0F)
+        && nearly_equal(fit.bounds.min.z, -1.0F)
+        && nearly_equal(fit.bounds.max.x, 1.0F)
+        && nearly_equal(fit.bounds.max.y, 1.0F)
+        && nearly_equal(fit.bounds.max.z, 1.0F)
+        && nearly_equal(fit.center.x, 0.0F)
+        && nearly_equal(fit.center.y, 0.0F)
+        && nearly_equal(fit.center.z, 0.0F)
+        && nearly_equal(fit.uniform_scale, expected_scale)
+        && nearly_equal(
+            fitted_center.x,
+            static_cast<float>(fit.viewport_width) * 0.5F)
+        && nearly_equal(
+            fitted_center.y,
+            static_cast<float>(fit.viewport_height) * 0.5F);
+
+    std::cout << std::fixed << std::setprecision(1)
+              << "HW2 Task 2 viewport fit: bounds_min=("
+              << fit.bounds.min.x << ',' << fit.bounds.min.y << ','
+              << fit.bounds.min.z << ") bounds_max=(" << fit.bounds.max.x
+              << ',' << fit.bounds.max.y << ',' << fit.bounds.max.z
+              << ") center=(" << fit.center.x << ',' << fit.center.y << ','
+              << fit.center.z << ") size=(" << fit.size.x << ','
+              << fit.size.y << ',' << fit.size.z << ") scale="
+              << fit.uniform_scale << " translation=(" << fit.translation.x
+              << ',' << fit.translation.y << ',' << fit.translation.z
+              << ") fitted=" << (vertices_fit ? "yes" : "no") << '\n'
+              << std::defaultfloat;
+    return vertices_fit && expected_values;
+}
+
+std::string make_window_title(
+    const std::filesystem::path& mesh_path,
+    const Mesh& mesh,
+    const ViewportFit& fit)
+{
+    std::ostringstream title;
+    title << "NanoRender OpenGL | " << mesh_path.filename().string()
+          << " | vertices=" << mesh.vertices.size()
+          << " faces=" << mesh.faces.size() << " | fit=" << std::fixed
+          << std::setprecision(1) << fit.uniform_scale << " px/unit";
+    return title.str();
+}
+
 bool validate_cleared_framebuffer(int width, int height)
 {
     std::array<unsigned char, 4> pixel {};
@@ -139,7 +216,7 @@ int main(int argc, char* argv[])
     const CommandLineOptions options = parse_options(argc, argv);
     if (!options.valid) {
         std::cerr << "Usage: nanorender_opengl "
-                     "[--validate foundation|hw2-task1]\n";
+                     "[--validate foundation|hw2-task1|hw2-task2]\n";
         return EXIT_FAILURE;
     }
 
@@ -193,9 +270,14 @@ int main(int argc, char* argv[])
 
     Mesh mesh;
     std::filesystem::path mesh_path;
+    ViewportFit viewport_fit;
     try {
         mesh_path = find_model_path(argv[0]);
         mesh = load_obj_mesh(mesh_path);
+        viewport_fit = calculate_viewport_fit(
+            mesh,
+            framebuffer_width,
+            framebuffer_height);
     } catch (const std::exception& exception) {
         std::cerr << "Mesh loading failed: " << exception.what() << '\n';
         glfwDestroyWindow(window);
@@ -207,16 +289,36 @@ int main(int argc, char* argv[])
               << ": vertices=" << mesh.vertices.size()
               << " faces=" << mesh.faces.size() << '\n';
     if (options.validation == ValidationMode::none) {
-        const std::string title = "NanoRender OpenGL | "
-            + mesh_path.filename().string() + " | vertices="
-            + std::to_string(mesh.vertices.size()) + " faces="
-            + std::to_string(mesh.faces.size());
+        const std::string title =
+            make_window_title(mesh_path, mesh, viewport_fit);
         glfwSetWindowTitle(window, title.c_str());
     }
 
     int exit_code = EXIT_SUCCESS;
     while (glfwWindowShouldClose(window) != GLFW_TRUE) {
         process_input(window);
+
+        int current_framebuffer_width = 0;
+        int current_framebuffer_height = 0;
+        glfwGetFramebufferSize(
+            window,
+            &current_framebuffer_width,
+            &current_framebuffer_height);
+        if (current_framebuffer_width > 0 && current_framebuffer_height > 0
+            && (current_framebuffer_width != framebuffer_width
+                || current_framebuffer_height != framebuffer_height)) {
+            framebuffer_width = current_framebuffer_width;
+            framebuffer_height = current_framebuffer_height;
+            viewport_fit = calculate_viewport_fit(
+                mesh,
+                framebuffer_width,
+                framebuffer_height);
+            if (options.validation == ValidationMode::none) {
+                const std::string title =
+                    make_window_title(mesh_path, mesh, viewport_fit);
+                glfwSetWindowTitle(window, title.c_str());
+            }
+        }
 
         glClearColor(
             clear_color[0],
@@ -226,15 +328,20 @@ int main(int argc, char* argv[])
         glClear(GL_COLOR_BUFFER_BIT);
 
         if (options.validation != ValidationMode::none) {
-            const bool passed = options.validation == ValidationMode::foundation
-                ? validate_cleared_framebuffer(
-                      framebuffer_width,
-                      framebuffer_height)
-                : validate_hw2_task1(mesh);
-            const char* validation_name =
-                options.validation == ValidationMode::foundation
-                ? "Foundation"
-                : "HW2 Task 1";
+            bool passed = false;
+            const char* validation_name = nullptr;
+            if (options.validation == ValidationMode::foundation) {
+                passed = validate_cleared_framebuffer(
+                    framebuffer_width,
+                    framebuffer_height);
+                validation_name = "Foundation";
+            } else if (options.validation == ValidationMode::hw2_task1) {
+                passed = validate_hw2_task1(mesh);
+                validation_name = "HW2 Task 1";
+            } else {
+                passed = validate_hw2_task2(mesh, viewport_fit);
+                validation_name = "HW2 Task 2";
+            }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";
             } else {
