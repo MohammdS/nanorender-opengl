@@ -63,22 +63,13 @@ Run on Windows:
 
 ## Roadmap
 
-This roadmap follows the task order in the original HW1-HW5 project. A task is
-checked only after its implementation, validation, documentation, focused
-commit, and push are complete.
+This roadmap follows the engine-related task order in the original HW2-HW5
+project. A task is checked only after its implementation, validation,
+documentation, focused commit, and push are complete.
 
 ### Foundation
 
 - [x] Establish the OpenGL 4.1 Core foundation with GLFW and GLAD
-
-### HW1 - Basic Graphics and Immediate Mode GUI
-
-- [ ] Task 1: Render the animated plasma background with a fullscreen GPU shader
-- [ ] Task 2: Initialize MicroUI and display a simple interactive widget
-- [ ] Task 3: Connect GLFW input callbacks and add a keyboard visual effect
-- [ ] Task 4: Render MicroUI through a GPU bridge and demonstrate a visual UI transform
-- [ ] Task 5: Bind MicroUI controls to the GPU background shader state
-- [ ] Task 6: Add GPU line rasterization and the interactive line-drawing canvas
 
 ### HW2 - Wireframe Viewer and Geometric Transformations
 
