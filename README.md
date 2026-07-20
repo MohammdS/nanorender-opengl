@@ -7,6 +7,44 @@ and records its validation and visual evidence here.
 
 ## Current Status
 
+### HW2 Task 1 - Loading and Inspecting 3D Data
+
+**Goal.** Load a small OBJ mesh, store its vertices and triangular faces, and
+make the loaded counts visible so they can be checked against the source file.
+
+**Implementation.** `src/mesh.cpp` parses OBJ `v` and `f` records into GLM
+positions and zero-based triangle indices. Face tokens with slash-separated
+attributes and negative indices are accepted, and polygon faces are
+triangulated with a fan. The validation model at
+`models/task1_tetrahedron.obj` contains four vertices and four faces. CMake
+copies the model directory beside the executable after each build.
+
+In normal mode, the GLFW window title displays the model filename, vertex
+count, and face count. The same information is printed to the console. OBJ
+parsing intentionally remains CPU-side because asset loading prepares data for
+later GPU vertex and index buffers; rasterization will move to OpenGL in Task
+3.
+
+**Validation.** The hidden validation checks the expected counts and verifies
+that every stored face index references an existing vertex:
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw2-task1
+```
+
+Verified Release output:
+
+```text
+OpenGL 4.1 initialized.
+Loaded OBJ task1_tetrahedron.obj: vertices=4 faces=4
+HW2 Task 1 OBJ loader: vertices=4 faces=4 valid_indices=yes
+HW2 Task 1 validation passed.
+```
+
+**Limitations.** This milestone loads positions and triangle topology only.
+Texture coordinates, imported normals, GPU buffers, and mesh rendering belong
+to later roadmap tasks.
+
 ### OpenGL Foundation
 
 The project currently creates an OpenGL 4.1 Core context with GLFW, loads the
@@ -18,8 +56,8 @@ GLFW, GLM, and MicroUI are pinned through CMake. GLAD is generated for only the
 OpenGL 4.1 Core API and stored under `third_party/glad`, so normal builds do not
 require Python or a generator package.
 
-No geometry is rendered in this milestone. GPU line rasterization is the next
-feature.
+No geometry is rendered yet. Task 2 adds mesh normalization and viewport
+fitting before the indexed wireframe renderer is introduced in Task 3.
 
 ### Validation
 
@@ -74,7 +112,7 @@ documentation, focused commit, and push are complete.
 ### HW2 - Wireframe Viewer and Geometric Transformations
 
 - [x] Task 0: Integrate GLM (included in the OpenGL foundation)
-- [ ] Task 1: Load OBJ data and display mesh information
+- [x] Task 1: Load OBJ data and display mesh information
 - [ ] Task 2: Calculate mesh bounds, normalization, and viewport fitting
 - [ ] Task 3: Render an indexed orthographic wireframe mesh
 - [ ] Task 4: Add separate local and world transformation controls

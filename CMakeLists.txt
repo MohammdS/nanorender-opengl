@@ -46,6 +46,8 @@ add_library(microui_lib STATIC
 target_include_directories(microui_lib PUBLIC ${microui_SOURCE_DIR}/src)
 
 add_executable(nanorender_opengl
+    src/mesh.cpp
+    src/mesh.h
     src/main.cpp
 )
 
@@ -56,6 +58,14 @@ target_link_libraries(
         glfw
         glm::glm
         microui_lib
+)
+
+add_custom_command(
+    TARGET nanorender_opengl POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/models"
+        "$<TARGET_FILE_DIR:nanorender_opengl>/models"
+    COMMENT "Copying model assets beside the executable"
 )
 
 if(MSVC)

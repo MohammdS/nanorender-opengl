@@ -8,6 +8,7 @@ cmake_install.cmake
 
 # Compiled files
 *.obj
+!models/*.obj
 *.o
 *.exe
 *.dll
