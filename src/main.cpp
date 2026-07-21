@@ -3,6 +3,7 @@
 
 #include "gpu_ui_renderer.h"
 #include "mesh.h"
+#include "mesh_renderer.h"
 
 #include <algorithm>
 #include <array>
@@ -17,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -29,6 +31,7 @@ enum class ValidationMode {
     foundation,
     hw2_task1,
     hw2_task2,
+    hw2_task3,
 };
 
 struct CommandLineOptions {
@@ -57,6 +60,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         }
         if (feature == "hw2-task2") {
             return {.validation = ValidationMode::hw2_task2, .valid = true};
+        }
+        if (feature == "hw2-task3") {
+            return {.validation = ValidationMode::hw2_task3, .valid = true};
         }
     }
 
@@ -157,11 +163,13 @@ std::filesystem::path find_shader_directory(const char* executable_argument)
 
     for (const std::filesystem::path& candidate : candidates) {
         if (std::filesystem::is_regular_file(candidate / "ui.vert")
-            && std::filesystem::is_regular_file(candidate / "ui.frag")) {
+            && std::filesystem::is_regular_file(candidate / "ui.frag")
+            && std::filesystem::is_regular_file(candidate / "wireframe.vert")
+            && std::filesystem::is_regular_file(candidate / "wireframe.frag")) {
             return candidate;
         }
     }
-    throw std::runtime_error("Could not find the GPU UI shaders.");
+    throw std::runtime_error("Could not find the GPU shader files.");
 }
 
 void build_mesh_info_popup(
@@ -371,6 +379,45 @@ bool validate_hw2_task2(
     return vertices_fit && expected_values;
 }
 
+bool validate_hw2_task3(
+    const Mesh& mesh,
+    const MeshRenderer& renderer,
+    int width,
+    int height)
+{
+    std::vector<unsigned char> pixels(
+        static_cast<std::size_t>(width)
+            * static_cast<std::size_t>(height) * 3);
+    glReadPixels(
+        0,
+        0,
+        width,
+        height,
+        GL_RGB,
+        GL_UNSIGNED_BYTE,
+        pixels.data());
+
+    std::size_t wireframe_pixels = 0;
+    for (std::size_t offset = 0; offset < pixels.size(); offset += 3) {
+        const unsigned char red = pixels[offset];
+        const unsigned char green = pixels[offset + 1];
+        const unsigned char blue = pixels[offset + 2];
+        if (red >= 35 && red <= 70 && green >= 185 && blue >= 230) {
+            ++wireframe_pixels;
+        }
+    }
+
+    const std::size_t expected_indices = mesh.faces.size() * 6;
+    const bool gpu_draw = wireframe_pixels >= 100;
+    std::cout << "HW2 Task 3 indexed wireframe: vertices="
+              << mesh.vertices.size() << " faces=" << mesh.faces.size()
+              << " line_indices=" << renderer.edge_index_count()
+              << " wireframe_pixels=" << wireframe_pixels
+              << " gpu_draw=" << (gpu_draw ? "yes" : "no") << '\n';
+    return renderer.edge_index_count() == expected_indices && gpu_draw
+        && glGetError() == GL_NO_ERROR;
+}
+
 std::string make_window_title(
     const std::filesystem::path& mesh_path,
     const Mesh& mesh,
@@ -423,7 +470,8 @@ int main(int argc, char* argv[])
     const CommandLineOptions options = parse_options(argc, argv);
     if (!options.valid) {
         std::cerr << "Usage: nanorender_opengl "
-                     "[--validate foundation|hw2-task1|hw2-task2]\n";
+                     "[--validate foundation|hw2-task1|hw2-task2|"
+                     "hw2-task3]\n";
         return EXIT_FAILURE;
     }
 
@@ -503,6 +551,21 @@ int main(int argc, char* argv[])
 
     std::unique_ptr<mu_Context> ui_context;
     std::unique_ptr<GpuUiRenderer> ui_renderer;
+    std::unique_ptr<MeshRenderer> mesh_renderer;
+    if (options.validation == ValidationMode::none
+        || options.validation == ValidationMode::hw2_task3) {
+        try {
+            mesh_renderer = std::make_unique<MeshRenderer>(
+                mesh,
+                find_shader_directory(argv[0]));
+        } catch (const std::exception& exception) {
+            std::cerr << "GPU mesh initialization failed: "
+                      << exception.what() << '\n';
+            glfwDestroyWindow(window);
+            glfwTerminate();
+            return EXIT_FAILURE;
+        }
+    }
     if (options.validation != ValidationMode::foundation) {
         try {
             ui_context = std::make_unique<mu_Context>();
@@ -574,6 +637,10 @@ int main(int argc, char* argv[])
             clear_color[3]);
         glClear(GL_COLOR_BUFFER_BIT);
 
+        if (mesh_renderer != nullptr) {
+            mesh_renderer->render(viewport_fit);
+        }
+
         if (ui_renderer != nullptr) {
             ui_renderer->render(
                 *ui_context,
@@ -595,9 +662,16 @@ int main(int argc, char* argv[])
                     framebuffer_width,
                     framebuffer_height);
                 validation_name = "HW2 Task 1";
-            } else {
+            } else if (options.validation == ValidationMode::hw2_task2) {
                 passed = validate_hw2_task2(mesh, viewport_fit);
                 validation_name = "HW2 Task 2";
+            } else {
+                passed = validate_hw2_task3(
+                    mesh,
+                    *mesh_renderer,
+                    framebuffer_width,
+                    framebuffer_height);
+                validation_name = "HW2 Task 3";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";
@@ -614,6 +688,7 @@ int main(int argc, char* argv[])
 
     ui_renderer.reset();
     ui_context.reset();
+    mesh_renderer.reset();
     glfwDestroyWindow(window);
     glfwTerminate();
     return exit_code;

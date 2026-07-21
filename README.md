@@ -49,6 +49,22 @@ Result at 1280 x 720: bounds `(-1,-1,-1)` to `(1,1,1)`, scale `144`,
 translation `(640,360,0)`, and all fitted vertices inside the viewport.
 Rendering begins in Task 3.
 
+### HW2 Task 3 - Orthographic Wireframe Rendering
+
+The mesh is uploaded once to a GPU vertex buffer. Each triangle contributes
+three indexed edges to an element buffer, and `glDrawElements(GL_LINES, ...)`
+draws the wireframe. The vertex shader applies the Task 2 viewport fit and an
+orthographic projection before the fragment shader colors the edges.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw2-task3
+```
+
+Result: 4 vertices, 4 faces, 24 line indices, and the validation framebuffer
+contains the GPU-rendered wireframe.
+
+![HW2 Task 3 indexed orthographic wireframe](./assets/hw2_task3_wireframe.png)
+
 ## Build and Run
 
 Requirements:
@@ -86,7 +102,7 @@ documentation, focused commit, and push are complete.
 - [x] Task 0: Integrate GLM (included in the OpenGL foundation)
 - [x] Task 1: Load OBJ data and display mesh information
 - [x] Task 2: Calculate mesh bounds, normalization, and viewport fitting
-- [ ] Task 3: Render an indexed orthographic wireframe mesh
+- [x] Task 3: Render an indexed orthographic wireframe mesh
 - [ ] Task 4: Add separate local and world transformation controls
 - [ ] Task 5: Apply model transformations in the vertex shader
 - [ ] Task 6: Add direct keyboard or mouse transformation controls

@@ -1,5 +1,7 @@
 #include "shader_program.h"
 
+#include <glm/gtc/type_ptr.hpp>
+
 #include <algorithm>
 #include <fstream>
 #include <sstream>
@@ -136,6 +138,15 @@ void ShaderProgram::use() const
 void ShaderProgram::set_int(const char* name, int value) const
 {
     glUniform1i(uniform_location(program_id_, name), value);
+}
+
+void ShaderProgram::set_mat4(const char* name, const glm::mat4& value) const
+{
+    glUniformMatrix4fv(
+        uniform_location(program_id_, name),
+        1,
+        GL_FALSE,
+        glm::value_ptr(value));
 }
 
 void ShaderProgram::set_vec2(const char* name, float x, float y) const

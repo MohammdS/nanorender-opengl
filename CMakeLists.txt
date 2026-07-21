@@ -50,6 +50,8 @@ add_executable(nanorender_opengl
     src/gpu_ui_renderer.h
     src/mesh.cpp
     src/mesh.h
+    src/mesh_renderer.cpp
+    src/mesh_renderer.h
     src/main.cpp
     src/microui_atlas.c
     src/microui_atlas.h
