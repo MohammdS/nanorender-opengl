@@ -65,6 +65,22 @@ contains the GPU-rendered wireframe.
 
 ![HW2 Task 3 indexed orthographic wireframe](./assets/hw2_task3_wireframe.png)
 
+### HW2 Task 4 - Local and World Transformation Controls
+
+A persistent `TransformControls` state stores translation, rotation, and scale
+on X, Y, and Z for both local and world space. A two-column GPU MicroUI window
+exposes all 18 values plus a reset button. The values are displayed and edited
+here but are not applied to the mesh until Task 5.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw2-task4
+```
+
+Result: all 18 controls have valid defaults and the local/world panel is
+present in the GPU-rendered framebuffer.
+
+![HW2 Task 4 local and world transformation controls](./assets/hw2_task4_transform_controls.png)
+
 ## Build and Run
 
 Requirements:
@@ -103,7 +119,7 @@ documentation, focused commit, and push are complete.
 - [x] Task 1: Load OBJ data and display mesh information
 - [x] Task 2: Calculate mesh bounds, normalization, and viewport fitting
 - [x] Task 3: Render an indexed orthographic wireframe mesh
-- [ ] Task 4: Add separate local and world transformation controls
+- [x] Task 4: Add separate local and world transformation controls
 - [ ] Task 5: Apply model transformations in the vertex shader
 - [ ] Task 6: Add direct keyboard or mouse transformation controls
 

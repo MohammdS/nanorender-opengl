@@ -4,6 +4,7 @@
 #include "gpu_ui_renderer.h"
 #include "mesh.h"
 #include "mesh_renderer.h"
+#include "transform_controls.h"
 
 #include <algorithm>
 #include <array>
@@ -32,6 +33,7 @@ enum class ValidationMode {
     hw2_task1,
     hw2_task2,
     hw2_task3,
+    hw2_task4,
 };
 
 struct CommandLineOptions {
@@ -63,6 +65,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         }
         if (feature == "hw2-task3") {
             return {.validation = ValidationMode::hw2_task3, .valid = true};
+        }
+        if (feature == "hw2-task4") {
+            return {.validation = ValidationMode::hw2_task4, .valid = true};
         }
     }
 
@@ -180,7 +185,6 @@ void build_mesh_info_popup(
     bool toggle_requested,
     bool& initialized)
 {
-    mu_begin(&context);
     mu_Container* container = mu_get_container(&context, "HW2 Mesh Info");
     if (!initialized) {
         container->open = 1;
@@ -269,19 +273,125 @@ void build_mesh_info_popup(
         mu_label(&context, "Press I to hide or reopen this window.");
         mu_end_window(&context);
     }
-    mu_end(&context);
 }
 
-bool popup_sample_differs_from_background(int width, int height)
+void draw_slider_control(
+    mu_Context& context,
+    const char* axis,
+    float& value,
+    float minimum,
+    float maximum)
 {
-    if (width <= 30 || height <= 60) {
+    int widths[] {32, -1};
+    mu_layout_row(&context, 2, widths, 0);
+    mu_label(&context, axis);
+    mu_slider(&context, &value, minimum, maximum);
+}
+
+void draw_vec3_controls(
+    mu_Context& context,
+    const char* label,
+    glm::vec3& value,
+    float minimum,
+    float maximum)
+{
+    int full_width[] {-1};
+    mu_layout_row(&context, 1, full_width, 0);
+    mu_label(&context, label);
+    draw_slider_control(context, "X", value.x, minimum, maximum);
+    draw_slider_control(context, "Y", value.y, minimum, maximum);
+    draw_slider_control(context, "Z", value.z, minimum, maximum);
+}
+
+void build_transform_controls_window(
+    mu_Context& context,
+    TransformControls& controls,
+    bool& initialized)
+{
+    mu_Container* container =
+        mu_get_container(&context, "HW2 Transform Controls");
+    if (!initialized) {
+        container->open = 1;
+        initialized = true;
+    }
+
+    if (mu_begin_window(
+            &context,
+            "HW2 Transform Controls",
+            mu_rect(490, 24, 765, 640))) {
+        int columns[] {350, -1};
+        mu_layout_row(&context, 2, columns, 540);
+
+        mu_begin_panel(&context, "Local Transform Panel");
+        int full_width[] {-1};
+        mu_layout_row(&context, 1, full_width, 0);
+        mu_label(&context, "Local frame");
+        draw_vec3_controls(
+            context,
+            "Translation (-600 to 600)",
+            controls.local_translation,
+            -600.0F,
+            600.0F);
+        draw_vec3_controls(
+            context,
+            "Rotation degrees (-180 to 180)",
+            controls.local_rotation,
+            -180.0F,
+            180.0F);
+        draw_vec3_controls(
+            context,
+            "Scale (0.2 to 3.0)",
+            controls.local_scale,
+            0.2F,
+            3.0F);
+        mu_end_panel(&context);
+
+        mu_begin_panel(&context, "World Transform Panel");
+        mu_layout_row(&context, 1, full_width, 0);
+        mu_label(&context, "World frame");
+        draw_vec3_controls(
+            context,
+            "Translation (-600 to 600)",
+            controls.world_translation,
+            -600.0F,
+            600.0F);
+        draw_vec3_controls(
+            context,
+            "Rotation degrees (-180 to 180)",
+            controls.world_rotation,
+            -180.0F,
+            180.0F);
+        draw_vec3_controls(
+            context,
+            "Scale (0.2 to 3.0)",
+            controls.world_scale,
+            0.2F,
+            3.0F);
+        mu_end_panel(&context);
+
+        mu_layout_row(&context, 1, full_width, 0);
+        if (mu_button(&context, "Reset Local and World Transforms")) {
+            controls = TransformControls {};
+        }
+        mu_end_window(&context);
+    }
+}
+
+bool ui_sample_differs_from_background(
+    int sample_x,
+    int sample_y_from_top,
+    int width,
+    int height)
+{
+    if (sample_x < 0 || sample_x >= width || sample_y_from_top < 0
+        || sample_y_from_top >= height) {
         return false;
     }
 
     std::array<unsigned char, 4> pixel {};
     glReadPixels(
-        30,
-        height - 1 - 60,
+        sample_x,
+        height - 1 - sample_y_from_top,
         1,
         1,
         GL_RGBA,
@@ -298,6 +408,11 @@ bool popup_sample_differs_from_background(int width, int height)
         }
     }
     return false;
+}
+
+bool popup_sample_differs_from_background(int width, int height)
+{
+    return ui_sample_differs_from_background(30, 60, width, height);
 }
 
 bool validate_hw2_task1(const Mesh& mesh, int width, int height)
@@ -418,6 +533,37 @@ bool validate_hw2_task3(
         && glGetError() == GL_NO_ERROR;
 }
 
+bool vec3_nearly_equal(const glm::vec3& value, const glm::vec3& expected)
+{
+    return nearly_equal(value.x, expected.x)
+        && nearly_equal(value.y, expected.y)
+        && nearly_equal(value.z, expected.z);
+}
+
+bool validate_hw2_task4(
+    const TransformControls& controls,
+    int width,
+    int height)
+{
+    const bool defaults_are_valid =
+        vec3_nearly_equal(controls.local_translation, glm::vec3(0.0F))
+        && vec3_nearly_equal(controls.local_rotation, glm::vec3(0.0F))
+        && vec3_nearly_equal(controls.local_scale, glm::vec3(1.0F))
+        && vec3_nearly_equal(controls.world_translation, glm::vec3(0.0F))
+        && vec3_nearly_equal(controls.world_rotation, glm::vec3(0.0F))
+        && vec3_nearly_equal(controls.world_scale, glm::vec3(1.0F));
+    const bool panel_rendered =
+        ui_sample_differs_from_background(510, 60, width, height);
+
+    std::cout << "HW2 Task 4 transform controls: values=18 local=yes "
+                 "world=yes defaults="
+              << (defaults_are_valid ? "yes" : "no")
+              << " panel_rendered=" << (panel_rendered ? "yes" : "no")
+              << '\n';
+    return defaults_are_valid && panel_rendered
+        && glGetError() == GL_NO_ERROR;
+}
+
 std::string make_window_title(
     const std::filesystem::path& mesh_path,
     const Mesh& mesh,
@@ -471,7 +617,7 @@ int main(int argc, char* argv[])
     if (!options.valid) {
         std::cerr << "Usage: nanorender_opengl "
                      "[--validate foundation|hw2-task1|hw2-task2|"
-                     "hw2-task3]\n";
+                     "hw2-task3|hw2-task4]\n";
         return EXIT_FAILURE;
     }
 
@@ -553,7 +699,8 @@ int main(int argc, char* argv[])
     std::unique_ptr<GpuUiRenderer> ui_renderer;
     std::unique_ptr<MeshRenderer> mesh_renderer;
     if (options.validation == ValidationMode::none
-        || options.validation == ValidationMode::hw2_task3) {
+        || options.validation == ValidationMode::hw2_task3
+        || options.validation == ValidationMode::hw2_task4) {
         try {
             mesh_renderer = std::make_unique<MeshRenderer>(
                 mesh,
@@ -584,7 +731,9 @@ int main(int argc, char* argv[])
     }
 
     UiInputState ui_input;
+    TransformControls transform_controls;
     bool popup_initialized = false;
+    bool transform_controls_initialized = false;
     int exit_code = EXIT_SUCCESS;
     while (glfwWindowShouldClose(window) != GLFW_TRUE) {
         process_input(window);
@@ -621,6 +770,7 @@ int main(int argc, char* argv[])
                     framebuffer_width,
                     framebuffer_height);
             }
+            mu_begin(ui_context.get());
             build_mesh_info_popup(
                 *ui_context,
                 mesh_path,
@@ -628,6 +778,14 @@ int main(int argc, char* argv[])
                 viewport_fit,
                 toggle_popup,
                 popup_initialized);
+            if (options.validation == ValidationMode::none
+                || options.validation == ValidationMode::hw2_task4) {
+                build_transform_controls_window(
+                    *ui_context,
+                    transform_controls,
+                    transform_controls_initialized);
+            }
+            mu_end(ui_context.get());
         }
 
         glClearColor(
@@ -665,13 +823,19 @@ int main(int argc, char* argv[])
             } else if (options.validation == ValidationMode::hw2_task2) {
                 passed = validate_hw2_task2(mesh, viewport_fit);
                 validation_name = "HW2 Task 2";
-            } else {
+            } else if (options.validation == ValidationMode::hw2_task3) {
                 passed = validate_hw2_task3(
                     mesh,
                     *mesh_renderer,
                     framebuffer_width,
                     framebuffer_height);
                 validation_name = "HW2 Task 3";
+            } else {
+                passed = validate_hw2_task4(
+                    transform_controls,
+                    framebuffer_width,
+                    framebuffer_height);
+                validation_name = "HW2 Task 4";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";
