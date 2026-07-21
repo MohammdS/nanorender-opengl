@@ -57,6 +57,7 @@ add_executable(nanorender_opengl
     src/microui_atlas.h
     src/shader_program.cpp
     src/shader_program.h
+    src/transform_controls.cpp
     src/transform_controls.h
 )
 

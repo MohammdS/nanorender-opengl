@@ -34,11 +34,19 @@ enum class ValidationMode {
     hw2_task2,
     hw2_task3,
     hw2_task4,
+    hw2_task5,
+};
+
+enum class StartupPreset {
+    none,
+    local_then_world,
+    world_then_local,
 };
 
 struct CommandLineOptions {
     ValidationMode validation = ValidationMode::none;
     bool valid = true;
+    StartupPreset preset = StartupPreset::none;
 };
 
 struct UiInputState {
@@ -68,6 +76,27 @@ CommandLineOptions parse_options(int argc, char* argv[])
         }
         if (feature == "hw2-task4") {
             return {.validation = ValidationMode::hw2_task4, .valid = true};
+        }
+        if (feature == "hw2-task5") {
+            return {.validation = ValidationMode::hw2_task5, .valid = true};
+        }
+    }
+
+    if (argc == 3 && std::string_view(argv[1]) == "--preset") {
+        const std::string_view preset = argv[2];
+        if (preset == "hw2-task5-local-world") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::local_then_world,
+            };
+        }
+        if (preset == "hw2-task5-world-local") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::world_then_local,
+            };
         }
     }
 
@@ -306,12 +335,13 @@ void draw_vec3_controls(
 void build_transform_controls_window(
     mu_Context& context,
     TransformControls& controls,
-    bool& initialized)
+    bool& initialized,
+    bool initially_open)
 {
     mu_Container* container =
         mu_get_container(&context, "HW2 Transform Controls");
     if (!initialized) {
-        container->open = 1;
+        container->open = initially_open ? 1 : 0;
         initialized = true;
     }
 
@@ -319,11 +349,14 @@ void build_transform_controls_window(
             &context,
             "HW2 Transform Controls",
             mu_rect(490, 24, 765, 640))) {
+        int full_width[] {-1};
+        mu_layout_row(&context, 1, full_width, 0);
+        mu_label(&context, "GPU matrix order: World * Local * fitted vertex");
+
         int columns[] {350, -1};
-        mu_layout_row(&context, 2, columns, 540);
+        mu_layout_row(&context, 2, columns, 480);
 
         mu_begin_panel(&context, "Local Transform Panel");
-        int full_width[] {-1};
         mu_layout_row(&context, 1, full_width, 0);
         mu_label(&context, "Local frame");
         draw_vec3_controls(
@@ -368,6 +401,15 @@ void build_transform_controls_window(
             0.2F,
             3.0F);
         mu_end_panel(&context);
+
+        int preset_widths[] {-1, -1};
+        mu_layout_row(&context, 2, preset_widths, 0);
+        if (mu_button(&context, "Local translation -> World rotation")) {
+            controls = make_local_then_world_preset();
+        }
+        if (mu_button(&context, "World translation -> Local rotation")) {
+            controls = make_world_then_local_preset();
+        }
 
         mu_layout_row(&context, 1, full_width, 0);
         if (mu_button(&context, "Reset Local and World Transforms")) {
@@ -494,11 +536,13 @@ bool validate_hw2_task2(
     return vertices_fit && expected_values;
 }
 
-bool validate_hw2_task3(
-    const Mesh& mesh,
-    const MeshRenderer& renderer,
-    int width,
-    int height)
+struct WireframeSample {
+    std::size_t pixel_count = 0;
+    float center_x = 0.0F;
+    float center_y = 0.0F;
+};
+
+WireframeSample read_wireframe_sample(int width, int height)
 {
     std::vector<unsigned char> pixels(
         static_cast<std::size_t>(width)
@@ -512,22 +556,44 @@ bool validate_hw2_task3(
         GL_UNSIGNED_BYTE,
         pixels.data());
 
-    std::size_t wireframe_pixels = 0;
+    WireframeSample sample;
+    double x_sum = 0.0;
+    double y_sum = 0.0;
     for (std::size_t offset = 0; offset < pixels.size(); offset += 3) {
         const unsigned char red = pixels[offset];
         const unsigned char green = pixels[offset + 1];
         const unsigned char blue = pixels[offset + 2];
         if (red >= 35 && red <= 70 && green >= 185 && blue >= 230) {
-            ++wireframe_pixels;
+            const std::size_t pixel_index = offset / 3;
+            x_sum += static_cast<double>(pixel_index % width);
+            y_sum += static_cast<double>(pixel_index / width);
+            ++sample.pixel_count;
         }
     }
 
+    if (sample.pixel_count > 0) {
+        sample.center_x = static_cast<float>(
+            x_sum / static_cast<double>(sample.pixel_count));
+        sample.center_y = static_cast<float>(
+            y_sum / static_cast<double>(sample.pixel_count));
+    }
+    return sample;
+}
+
+bool validate_hw2_task3(
+    const Mesh& mesh,
+    const MeshRenderer& renderer,
+    int width,
+    int height)
+{
+    const WireframeSample sample = read_wireframe_sample(width, height);
+
     const std::size_t expected_indices = mesh.faces.size() * 6;
-    const bool gpu_draw = wireframe_pixels >= 100;
+    const bool gpu_draw = sample.pixel_count >= 100;
     std::cout << "HW2 Task 3 indexed wireframe: vertices="
               << mesh.vertices.size() << " faces=" << mesh.faces.size()
               << " line_indices=" << renderer.edge_index_count()
-              << " wireframe_pixels=" << wireframe_pixels
+              << " wireframe_pixels=" << sample.pixel_count
               << " gpu_draw=" << (gpu_draw ? "yes" : "no") << '\n';
     return renderer.edge_index_count() == expected_indices && gpu_draw
         && glGetError() == GL_NO_ERROR;
@@ -561,6 +627,48 @@ bool validate_hw2_task4(
               << " panel_rendered=" << (panel_rendered ? "yes" : "no")
               << '\n';
     return defaults_are_valid && panel_rendered
+        && glGetError() == GL_NO_ERROR;
+}
+
+WireframeSample render_and_sample_transform(
+    const MeshRenderer& renderer,
+    const ViewportFit& fit,
+    const TransformControls& controls)
+{
+    glClear(GL_COLOR_BUFFER_BIT);
+    renderer.render(fit, controls);
+    return read_wireframe_sample(fit.viewport_width, fit.viewport_height);
+}
+
+bool validate_hw2_task5(
+    const MeshRenderer& renderer,
+    const ViewportFit& fit)
+{
+    const WireframeSample local_then_world = render_and_sample_transform(
+        renderer,
+        fit,
+        make_local_then_world_preset());
+    const WireframeSample world_then_local = render_and_sample_transform(
+        renderer,
+        fit,
+        make_world_then_local_preset());
+    const float separation = std::hypot(
+        local_then_world.center_x - world_then_local.center_x,
+        local_then_world.center_y - world_then_local.center_y);
+    const bool both_rendered = local_then_world.pixel_count >= 100
+        && world_then_local.pixel_count >= 100;
+    const bool order_is_visible = separation >= 50.0F;
+
+    std::cout << std::fixed << std::setprecision(1)
+              << "HW2 Task 5 GPU transforms: local_world_center=("
+              << local_then_world.center_x << ',' << local_then_world.center_y
+              << ") world_local_center=(" << world_then_local.center_x << ','
+              << world_then_local.center_y << ") separation=" << separation
+              << " gpu_draw=" << (both_rendered ? "yes" : "no")
+              << " order_visible=" << (order_is_visible ? "yes" : "no")
+              << '\n'
+              << std::defaultfloat;
+    return both_rendered && order_is_visible
         && glGetError() == GL_NO_ERROR;
 }
 
@@ -617,7 +725,9 @@ int main(int argc, char* argv[])
     if (!options.valid) {
         std::cerr << "Usage: nanorender_opengl "
                      "[--validate foundation|hw2-task1|hw2-task2|"
-                     "hw2-task3|hw2-task4]\n";
+                     "hw2-task3|hw2-task4|hw2-task5] or "
+                     "[--preset hw2-task5-local-world|"
+                     "hw2-task5-world-local]\n";
         return EXIT_FAILURE;
     }
 
@@ -700,7 +810,8 @@ int main(int argc, char* argv[])
     std::unique_ptr<MeshRenderer> mesh_renderer;
     if (options.validation == ValidationMode::none
         || options.validation == ValidationMode::hw2_task3
-        || options.validation == ValidationMode::hw2_task4) {
+        || options.validation == ValidationMode::hw2_task4
+        || options.validation == ValidationMode::hw2_task5) {
         try {
             mesh_renderer = std::make_unique<MeshRenderer>(
                 mesh,
@@ -732,6 +843,11 @@ int main(int argc, char* argv[])
 
     UiInputState ui_input;
     TransformControls transform_controls;
+    if (options.preset == StartupPreset::local_then_world) {
+        transform_controls = make_local_then_world_preset();
+    } else if (options.preset == StartupPreset::world_then_local) {
+        transform_controls = make_world_then_local_preset();
+    }
     bool popup_initialized = false;
     bool transform_controls_initialized = false;
     int exit_code = EXIT_SUCCESS;
@@ -779,11 +895,13 @@ int main(int argc, char* argv[])
                 toggle_popup,
                 popup_initialized);
             if (options.validation == ValidationMode::none
-                || options.validation == ValidationMode::hw2_task4) {
+                || options.validation == ValidationMode::hw2_task4
+                || options.validation == ValidationMode::hw2_task5) {
                 build_transform_controls_window(
                     *ui_context,
                     transform_controls,
-                    transform_controls_initialized);
+                    transform_controls_initialized,
+                    options.preset == StartupPreset::none);
             }
             mu_end(ui_context.get());
         }
@@ -796,7 +914,7 @@ int main(int argc, char* argv[])
         glClear(GL_COLOR_BUFFER_BIT);
 
         if (mesh_renderer != nullptr) {
-            mesh_renderer->render(viewport_fit);
+            mesh_renderer->render(viewport_fit, transform_controls);
         }
 
         if (ui_renderer != nullptr) {
@@ -830,12 +948,15 @@ int main(int argc, char* argv[])
                     framebuffer_width,
                     framebuffer_height);
                 validation_name = "HW2 Task 3";
-            } else {
+            } else if (options.validation == ValidationMode::hw2_task4) {
                 passed = validate_hw2_task4(
                     transform_controls,
                     framebuffer_width,
                     framebuffer_height);
                 validation_name = "HW2 Task 4";
+            } else {
+                passed = validate_hw2_task5(*mesh_renderer, viewport_fit);
+                validation_name = "HW2 Task 5";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";

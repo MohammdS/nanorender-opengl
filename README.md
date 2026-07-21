@@ -81,6 +81,35 @@ present in the GPU-rendered framebuffer.
 
 ![HW2 Task 4 local and world transformation controls](./assets/hw2_task4_transform_controls.png)
 
+### HW2 Task 5 - Applying Transformations on the GPU
+
+The UI values now build separate local and world matrices. The vertex shader
+applies `projection * world * local * viewport-fit * vertex`, so transformations
+happen on GPU before orthographic projection. Local rotation and scale use the
+fitted model center as their pivot; world transforms use the global origin.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw2-task5
+```
+
+Result: both required presets render on GPU and their detected wireframe
+centers are separated, confirming that changing matrix order changes the image.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --preset hw2-task5-local-world
+.\build\Release\nanorender_opengl.exe --preset hw2-task5-world-local
+```
+
+Local translation followed by world rotation moves the translated offset around
+the global origin:
+
+![HW2 Task 5 local translation then world rotation](./assets/hw2_task5_local_then_world.png)
+
+Local rotation followed by world translation spins the mesh around its fitted
+center and then moves it:
+
+![HW2 Task 5 local rotation then world translation](./assets/hw2_task5_world_then_local.png)
+
 ## Build and Run
 
 Requirements:
@@ -120,7 +149,7 @@ documentation, focused commit, and push are complete.
 - [x] Task 2: Calculate mesh bounds, normalization, and viewport fitting
 - [x] Task 3: Render an indexed orthographic wireframe mesh
 - [x] Task 4: Add separate local and world transformation controls
-- [ ] Task 5: Apply model transformations in the vertex shader
+- [x] Task 5: Apply model transformations in the vertex shader
 - [ ] Task 6: Add direct keyboard or mouse transformation controls
 
 ### HW3 - Virtual Cameras and Projections

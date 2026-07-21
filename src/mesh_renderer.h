@@ -2,6 +2,7 @@
 
 #include "mesh.h"
 #include "shader_program.h"
+#include "transform_controls.h"
 
 #include <glad/gl.h>
 
@@ -20,7 +21,9 @@ public:
     MeshRenderer(MeshRenderer&&) = delete;
     MeshRenderer& operator=(MeshRenderer&&) = delete;
 
-    void render(const ViewportFit& fit) const;
+    void render(
+        const ViewportFit& fit,
+        const TransformControls& controls) const;
 
     [[nodiscard]] std::size_t edge_index_count() const;
 
