@@ -1,15 +1,18 @@
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 
+#include "gpu_ui_renderer.h"
 #include "mesh.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -31,6 +34,11 @@ enum class ValidationMode {
 struct CommandLineOptions {
     ValidationMode validation = ValidationMode::none;
     bool valid = true;
+};
+
+struct UiInputState {
+    bool previous_left_mouse = false;
+    bool previous_info_key = false;
 };
 
 CommandLineOptions parse_options(int argc, char* argv[])
@@ -72,6 +80,55 @@ void process_input(GLFWwindow* window)
     }
 }
 
+bool update_ui_input(
+    mu_Context& context,
+    UiInputState& input,
+    GLFWwindow* window,
+    int framebuffer_width,
+    int framebuffer_height)
+{
+    int window_width = 0;
+    int window_height = 0;
+    glfwGetWindowSize(window, &window_width, &window_height);
+
+    double raw_mouse_x = 0.0;
+    double raw_mouse_y = 0.0;
+    glfwGetCursorPos(window, &raw_mouse_x, &raw_mouse_y);
+    const double scale_x = window_width > 0
+        ? static_cast<double>(framebuffer_width) / window_width
+        : 1.0;
+    const double scale_y = window_height > 0
+        ? static_cast<double>(framebuffer_height) / window_height
+        : 1.0;
+    const int mouse_x =
+        static_cast<int>(std::lround(raw_mouse_x * scale_x));
+    const int mouse_y =
+        static_cast<int>(std::lround(raw_mouse_y * scale_y));
+    mu_input_mousemove(&context, mouse_x, mouse_y);
+
+    const bool left_mouse =
+        glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    if (left_mouse && !input.previous_left_mouse) {
+        mu_input_mousedown(
+            &context,
+            mouse_x,
+            mouse_y,
+            MU_MOUSE_LEFT);
+    } else if (!left_mouse && input.previous_left_mouse) {
+        mu_input_mouseup(
+            &context,
+            mouse_x,
+            mouse_y,
+            MU_MOUSE_LEFT);
+    }
+    input.previous_left_mouse = left_mouse;
+
+    const bool info_key = glfwGetKey(window, GLFW_KEY_I) == GLFW_PRESS;
+    const bool info_key_pressed = info_key && !input.previous_info_key;
+    input.previous_info_key = info_key;
+    return info_key_pressed;
+}
+
 std::filesystem::path find_model_path(const char* executable_argument)
 {
     const std::filesystem::path executable_directory =
@@ -89,7 +146,153 @@ std::filesystem::path find_model_path(const char* executable_argument)
     throw std::runtime_error("Could not find models/task1_tetrahedron.obj");
 }
 
-bool validate_hw2_task1(const Mesh& mesh)
+std::filesystem::path find_shader_directory(const char* executable_argument)
+{
+    const std::filesystem::path executable_directory =
+        std::filesystem::absolute(executable_argument).parent_path();
+    const std::array candidates {
+        std::filesystem::current_path() / "shaders",
+        executable_directory / "shaders",
+    };
+
+    for (const std::filesystem::path& candidate : candidates) {
+        if (std::filesystem::is_regular_file(candidate / "ui.vert")
+            && std::filesystem::is_regular_file(candidate / "ui.frag")) {
+            return candidate;
+        }
+    }
+    throw std::runtime_error("Could not find the GPU UI shaders.");
+}
+
+void build_mesh_info_popup(
+    mu_Context& context,
+    const std::filesystem::path& mesh_path,
+    const Mesh& mesh,
+    const ViewportFit& fit,
+    bool toggle_requested,
+    bool& initialized)
+{
+    mu_begin(&context);
+    mu_Container* container = mu_get_container(&context, "HW2 Mesh Info");
+    if (!initialized) {
+        container->open = 1;
+        initialized = true;
+    }
+    if (toggle_requested) {
+        container->open = container->open == 0 ? 1 : 0;
+        if (container->open != 0) {
+            mu_bring_to_front(&context, container);
+        }
+    }
+
+    if (mu_begin_window(
+            &context,
+            "HW2 Mesh Info",
+            mu_rect(24, 24, 430, 300))) {
+        int full_width[] {-1};
+        mu_layout_row(&context, 1, full_width, 0);
+
+        char filename[160] {};
+        char vertex_count[64] {};
+        char face_count[64] {};
+        char bounds_min[128] {};
+        char bounds_max[128] {};
+        char center[128] {};
+        char size[128] {};
+        char scale[96] {};
+        std::snprintf(
+            filename,
+            sizeof(filename),
+            "OBJ: %s",
+            mesh_path.filename().string().c_str());
+        std::snprintf(
+            vertex_count,
+            sizeof(vertex_count),
+            "Vertices: %zu",
+            mesh.vertices.size());
+        std::snprintf(
+            face_count,
+            sizeof(face_count),
+            "Faces: %zu",
+            mesh.faces.size());
+        std::snprintf(
+            bounds_min,
+            sizeof(bounds_min),
+            "Bounds min: %.1f, %.1f, %.1f",
+            fit.bounds.min.x,
+            fit.bounds.min.y,
+            fit.bounds.min.z);
+        std::snprintf(
+            bounds_max,
+            sizeof(bounds_max),
+            "Bounds max: %.1f, %.1f, %.1f",
+            fit.bounds.max.x,
+            fit.bounds.max.y,
+            fit.bounds.max.z);
+        std::snprintf(
+            center,
+            sizeof(center),
+            "Center: %.1f, %.1f, %.1f",
+            fit.center.x,
+            fit.center.y,
+            fit.center.z);
+        std::snprintf(
+            size,
+            sizeof(size),
+            "Size: %.1f, %.1f, %.1f",
+            fit.size.x,
+            fit.size.y,
+            fit.size.z);
+        std::snprintf(
+            scale,
+            sizeof(scale),
+            "Viewport scale: %.1f px/unit",
+            fit.uniform_scale);
+
+        mu_label(&context, "Status: loaded");
+        mu_label(&context, filename);
+        mu_label(&context, vertex_count);
+        mu_label(&context, face_count);
+        mu_label(&context, bounds_min);
+        mu_label(&context, bounds_max);
+        mu_label(&context, center);
+        mu_label(&context, size);
+        mu_label(&context, scale);
+        mu_label(&context, "Press I to hide or reopen this window.");
+        mu_end_window(&context);
+    }
+    mu_end(&context);
+}
+
+bool popup_sample_differs_from_background(int width, int height)
+{
+    if (width <= 30 || height <= 60) {
+        return false;
+    }
+
+    std::array<unsigned char, 4> pixel {};
+    glReadPixels(
+        30,
+        height - 1 - 60,
+        1,
+        1,
+        GL_RGBA,
+        GL_UNSIGNED_BYTE,
+        pixel.data());
+
+    constexpr int tolerance = 8;
+    for (std::size_t channel = 0; channel < 3; ++channel) {
+        const int background = static_cast<int>(
+            std::lround(clear_color[channel] * 255.0F));
+        if (std::abs(static_cast<int>(pixel[channel]) - background)
+            > tolerance) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool validate_hw2_task1(const Mesh& mesh, int width, int height)
 {
     bool indices_are_valid = true;
     for (const TriangleFace& face : mesh.faces) {
@@ -99,12 +302,16 @@ bool validate_hw2_task1(const Mesh& mesh)
         }
     }
 
+    const bool popup_rendered =
+        popup_sample_differs_from_background(width, height);
     std::cout << "HW2 Task 1 OBJ loader: vertices=" << mesh.vertices.size()
               << " faces=" << mesh.faces.size()
               << " valid_indices=" << (indices_are_valid ? "yes" : "no")
+              << " popup_rendered=" << (popup_rendered ? "yes" : "no")
               << '\n';
     return mesh.vertices.size() == 4 && mesh.faces.size() == 4
-        && indices_are_valid;
+        && indices_are_valid && popup_rendered
+        && glGetError() == GL_NO_ERROR;
 }
 
 bool nearly_equal(float left, float right, float tolerance = 0.001F)
@@ -294,6 +501,27 @@ int main(int argc, char* argv[])
         glfwSetWindowTitle(window, title.c_str());
     }
 
+    std::unique_ptr<mu_Context> ui_context;
+    std::unique_ptr<GpuUiRenderer> ui_renderer;
+    if (options.validation != ValidationMode::foundation) {
+        try {
+            ui_context = std::make_unique<mu_Context>();
+            mu_init(ui_context.get());
+            ui_context->text_width = GpuUiRenderer::text_width;
+            ui_context->text_height = GpuUiRenderer::text_height;
+            ui_renderer = std::make_unique<GpuUiRenderer>(
+                find_shader_directory(argv[0]));
+        } catch (const std::exception& exception) {
+            std::cerr << "GPU UI initialization failed: "
+                      << exception.what() << '\n';
+            glfwDestroyWindow(window);
+            glfwTerminate();
+            return EXIT_FAILURE;
+        }
+    }
+
+    UiInputState ui_input;
+    bool popup_initialized = false;
     int exit_code = EXIT_SUCCESS;
     while (glfwWindowShouldClose(window) != GLFW_TRUE) {
         process_input(window);
@@ -320,12 +548,38 @@ int main(int argc, char* argv[])
             }
         }
 
+        bool toggle_popup = false;
+        if (ui_context != nullptr) {
+            if (options.validation == ValidationMode::none) {
+                toggle_popup = update_ui_input(
+                    *ui_context,
+                    ui_input,
+                    window,
+                    framebuffer_width,
+                    framebuffer_height);
+            }
+            build_mesh_info_popup(
+                *ui_context,
+                mesh_path,
+                mesh,
+                viewport_fit,
+                toggle_popup,
+                popup_initialized);
+        }
+
         glClearColor(
             clear_color[0],
             clear_color[1],
             clear_color[2],
             clear_color[3]);
         glClear(GL_COLOR_BUFFER_BIT);
+
+        if (ui_renderer != nullptr) {
+            ui_renderer->render(
+                *ui_context,
+                framebuffer_width,
+                framebuffer_height);
+        }
 
         if (options.validation != ValidationMode::none) {
             bool passed = false;
@@ -336,7 +590,10 @@ int main(int argc, char* argv[])
                     framebuffer_height);
                 validation_name = "Foundation";
             } else if (options.validation == ValidationMode::hw2_task1) {
-                passed = validate_hw2_task1(mesh);
+                passed = validate_hw2_task1(
+                    mesh,
+                    framebuffer_width,
+                    framebuffer_height);
                 validation_name = "HW2 Task 1";
             } else {
                 passed = validate_hw2_task2(mesh, viewport_fit);
@@ -355,6 +612,8 @@ int main(int argc, char* argv[])
         glfwPollEvents();
     }
 
+    ui_renderer.reset();
+    ui_context.reset();
     glfwDestroyWindow(window);
     glfwTerminate();
     return exit_code;

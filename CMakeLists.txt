@@ -46,9 +46,22 @@ add_library(microui_lib STATIC
 target_include_directories(microui_lib PUBLIC ${microui_SOURCE_DIR}/src)
 
 add_executable(nanorender_opengl
+    src/gpu_ui_renderer.cpp
+    src/gpu_ui_renderer.h
     src/mesh.cpp
     src/mesh.h
     src/main.cpp
+    src/microui_atlas.c
+    src/microui_atlas.h
+    src/shader_program.cpp
+    src/shader_program.h
+)
+
+target_include_directories(
+    nanorender_opengl
+    PRIVATE
+        src
+        ${microui_SOURCE_DIR}/demo
 )
 
 target_link_libraries(
@@ -65,7 +78,10 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/models"
         "$<TARGET_FILE_DIR:nanorender_opengl>/models"
-    COMMENT "Copying model assets beside the executable"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+        "$<TARGET_FILE_DIR:nanorender_opengl>/shaders"
+    COMMENT "Copying model and shader assets beside the executable"
 )
 
 if(MSVC)

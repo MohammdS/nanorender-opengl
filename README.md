@@ -22,20 +22,24 @@ Result: `Foundation validation passed.`
 
 `src/mesh.cpp` loads OBJ positions and faces into GLM vertices and zero-based
 triangle indices. The test tetrahedron has 4 vertices and 4 faces; the counts
-are shown in the window title and console. Polygon faces, slash-separated face
-tokens, and negative indices are supported.
+are shown in a movable GPU-rendered MicroUI window. Polygon faces,
+slash-separated face tokens, and negative indices are supported. Press `I` to
+hide or reopen the window.
 
 ```powershell
 .\build\Release\nanorender_opengl.exe --validate hw2-task1
 ```
 
-Result: `vertices=4 faces=4 valid_indices=yes`.
+Result: `vertices=4 faces=4 valid_indices=yes popup_rendered=yes`.
+
+![HW2 Task 1 mesh information popup](./assets/hw2_task1_mesh_info_popup.png)
 
 ### HW2 Task 2 - Normalization and Viewport Fitting
 
 The mesh bounds provide its center and largest dimension. One uniform scale
 maps that dimension to 40% of the smaller framebuffer dimension, and a
-translation centers it. The fit is recalculated after framebuffer resizing.
+translation centers it. The fit is recalculated after framebuffer resizing
+and displayed in the same mesh-information window.
 
 ```powershell
 .\build\Release\nanorender_opengl.exe --validate hw2-task2
