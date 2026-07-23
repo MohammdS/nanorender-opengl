@@ -99,16 +99,20 @@ void MeshRenderer::render(
     const TransformControls& controls,
     const CameraControls& camera) const
 {
+    render(fit, controls, camera, ProjectionControls {});
+}
+
+void MeshRenderer::render(
+    const ViewportFit& fit,
+    const TransformControls& controls,
+    const CameraControls& camera,
+    const ProjectionControls& projection_controls) const
+{
     const glm::mat4 viewport_fit =
         glm::translate(glm::mat4(1.0F), fit.translation)
         * glm::scale(glm::mat4(1.0F), glm::vec3(fit.uniform_scale));
-    const glm::mat4 projection = glm::ortho(
-        0.0F,
-        static_cast<float>(fit.viewport_width),
-        0.0F,
-        static_cast<float>(fit.viewport_height),
-        -10000.0F,
-        10000.0F);
+    const glm::mat4 projection =
+        build_projection_matrix(fit, projection_controls);
 
     GLint previous_program = 0;
     GLint previous_vertex_array = 0;

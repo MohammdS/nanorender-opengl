@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
@@ -39,6 +40,7 @@ enum class ValidationMode {
     hw2_task6,
     hw3_task1,
     hw3_task2,
+    hw3_task3,
 };
 
 enum class StartupPreset {
@@ -47,6 +49,7 @@ enum class StartupPreset {
     world_then_local,
     hw3_task1_debug,
     hw3_task2_camera,
+    hw3_task3_projection,
 };
 
 struct CommandLineOptions {
@@ -95,6 +98,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         if (feature == "hw3-task2") {
             return {.validation = ValidationMode::hw3_task2, .valid = true};
         }
+        if (feature == "hw3-task3") {
+            return {.validation = ValidationMode::hw3_task3, .valid = true};
+        }
     }
 
     if (argc == 3 && std::string_view(argv[1]) == "--preset") {
@@ -125,6 +131,13 @@ CommandLineOptions parse_options(int argc, char* argv[])
                 .validation = ValidationMode::none,
                 .valid = true,
                 .preset = StartupPreset::hw3_task2_camera,
+            };
+        }
+        if (preset == "hw3-task3-projection") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::hw3_task3_projection,
             };
         }
     }
@@ -412,6 +425,36 @@ void draw_vec3_controls(
     draw_slider_control(context, "Z", value.z, minimum, maximum);
 }
 
+void draw_compact_vec3_controls(
+    mu_Context& context,
+    const char* label,
+    glm::vec3& value,
+    float minimum,
+    float maximum)
+{
+    int full_width[] {-1};
+    mu_layout_row(&context, 1, full_width, 0);
+    mu_label(&context, label);
+    int widths[] {125, 125, -1};
+    mu_layout_row(&context, 3, widths, 0);
+    mu_slider(&context, &value.x, minimum, maximum);
+    mu_slider(&context, &value.y, minimum, maximum);
+    mu_slider(&context, &value.z, minimum, maximum);
+}
+
+void draw_named_slider(
+    mu_Context& context,
+    const char* label,
+    float& value,
+    float minimum,
+    float maximum)
+{
+    int widths[] {110, -1};
+    mu_layout_row(&context, 2, widths, 0);
+    mu_label(&context, label);
+    mu_slider(&context, &value, minimum, maximum);
+}
+
 void build_transform_controls_window(
     mu_Context& context,
     TransformControls& controls,
@@ -520,6 +563,7 @@ void build_hw3_debug_window(
     mu_Context& context,
     DebugVisualControls& controls,
     CameraControls& camera,
+    ProjectionControls& projection,
     bool& initialized)
 {
     mu_Container* container = mu_get_container(&context, "HW3 Camera / Debug");
@@ -531,7 +575,7 @@ void build_hw3_debug_window(
     if (mu_begin_window(
             &context,
             "HW3 Camera / Debug",
-            mu_rect(24, 330, 430, 370))) {
+            mu_rect(24, 286, 430, 424))) {
         int full_width[] {-1};
         mu_layout_row(&context, 1, full_width, 0);
         mu_label(&context, "Task 1 GPU debug visuals");
@@ -542,15 +586,15 @@ void build_hw3_debug_window(
             "Show Bounding Box",
             &controls.show_bounding_box);
         mu_label(&context, "Task 2 virtual camera (inverse view matrix)");
-        draw_vec3_controls(
+        draw_compact_vec3_controls(
             context,
-            "Position (-600 to 600)",
+            "Position X / Y / Z (-2000 to 2000)",
             camera.position,
-            -600.0F,
-            600.0F);
-        draw_vec3_controls(
+            -2000.0F,
+            2000.0F);
+        draw_compact_vec3_controls(
             context,
-            "Rotation degrees (-180 to 180)",
+            "Rotation X / Y / Z (-180 to 180)",
             camera.rotation,
             -180.0F,
             180.0F);
@@ -558,6 +602,33 @@ void build_hw3_debug_window(
         if (mu_button(&context, "Reset Camera")) {
             camera = CameraControls {};
         }
+        mu_label(&context, "Task 3 projection");
+        if (mu_button(
+                &context,
+                projection.use_perspective != 0
+                    ? "Projection: Perspective"
+                    : "Projection: Orthographic")) {
+            projection.use_perspective =
+                projection.use_perspective == 0 ? 1 : 0;
+        }
+        draw_named_slider(
+            context,
+            "Field of view",
+            projection.fov_degrees,
+            10.0F,
+            120.0F);
+        draw_named_slider(
+            context,
+            "Near plane",
+            projection.near_plane,
+            0.1F,
+            100.0F);
+        draw_named_slider(
+            context,
+            "Far plane",
+            projection.far_plane,
+            1000.0F,
+            10000.0F);
         mu_end_window(&context);
     }
 }
@@ -683,6 +754,8 @@ struct WireframeSample {
     std::size_t pixel_count = 0;
     float center_x = 0.0F;
     float center_y = 0.0F;
+    int min_x = std::numeric_limits<int>::max();
+    int max_x = -1;
 };
 
 WireframeSample read_wireframe_sample(int width, int height)
@@ -708,8 +781,11 @@ WireframeSample read_wireframe_sample(int width, int height)
         const unsigned char blue = pixels[offset + 2];
         if (red >= 35 && red <= 70 && green >= 185 && blue >= 230) {
             const std::size_t pixel_index = offset / 3;
-            x_sum += static_cast<double>(pixel_index % width);
+            const int x = static_cast<int>(pixel_index % width);
+            x_sum += static_cast<double>(x);
             y_sum += static_cast<double>(pixel_index / width);
+            sample.min_x = std::min(sample.min_x, x);
+            sample.max_x = std::max(sample.max_x, x);
             ++sample.pixel_count;
         }
     }
@@ -1001,6 +1077,64 @@ bool validate_hw3_task2(
         && glGetError() == GL_NO_ERROR;
 }
 
+WireframeSample render_and_sample_projection(
+    const MeshRenderer& renderer,
+    const ViewportFit& fit,
+    const TransformControls& transforms,
+    const CameraControls& camera,
+    const ProjectionControls& projection)
+{
+    glClear(GL_COLOR_BUFFER_BIT);
+    renderer.render(fit, transforms, camera, projection);
+    return read_wireframe_sample(fit.viewport_width, fit.viewport_height);
+}
+
+bool validate_hw3_task3(
+    const MeshRenderer& renderer,
+    const ViewportFit& fit)
+{
+    const TransformControls transforms = make_hw3_task1_debug_preset();
+    const CameraControls camera;
+    const ProjectionControls orthographic;
+    ProjectionControls perspective;
+    perspective.use_perspective = 1;
+
+    const WireframeSample orthographic_sample =
+        render_and_sample_projection(
+            renderer,
+            fit,
+            transforms,
+            camera,
+            orthographic);
+    const WireframeSample perspective_sample =
+        render_and_sample_projection(
+            renderer,
+            fit,
+            transforms,
+            camera,
+            perspective);
+    const int orthographic_width =
+        orthographic_sample.max_x - orthographic_sample.min_x + 1;
+    const int perspective_width =
+        perspective_sample.max_x - perspective_sample.min_x + 1;
+    const bool both_rendered = orthographic_sample.pixel_count >= 100
+        && perspective_sample.pixel_count >= 100;
+    const bool perspective_is_visible =
+        perspective_width + 20 <= orthographic_width;
+
+    std::cout << std::fixed << std::setprecision(1)
+              << "HW3 Task 3 projection: orthographic_width="
+              << orthographic_width << " perspective_width="
+              << perspective_width << " fov=" << perspective.fov_degrees
+              << " near=" << perspective.near_plane
+              << " far=" << perspective.far_plane
+              << " perspective_visible="
+              << (perspective_is_visible ? "yes" : "no") << '\n'
+              << std::defaultfloat;
+    return both_rendered && perspective_is_visible
+        && glGetError() == GL_NO_ERROR;
+}
+
 std::string make_window_title(
     const std::filesystem::path& mesh_path,
     const Mesh& mesh,
@@ -1055,10 +1189,10 @@ int main(int argc, char* argv[])
         std::cerr << "Usage: nanorender_opengl "
                      "[--validate foundation|hw2-task1|hw2-task2|"
                      "hw2-task3|hw2-task4|hw2-task5|hw2-task6|"
-                     "hw3-task1|hw3-task2] or "
+                     "hw3-task1|hw3-task2|hw3-task3] or "
                      "[--preset hw2-task5-local-world|"
                      "hw2-task5-world-local|hw3-task1-debug|"
-                     "hw3-task2-camera]\n";
+                     "hw3-task2-camera|hw3-task3-projection]\n";
         return EXIT_FAILURE;
     }
 
@@ -1146,7 +1280,8 @@ int main(int argc, char* argv[])
         || options.validation == ValidationMode::hw2_task5
         || options.validation == ValidationMode::hw2_task6
         || options.validation == ValidationMode::hw3_task1
-        || options.validation == ValidationMode::hw3_task2) {
+        || options.validation == ValidationMode::hw3_task2
+        || options.validation == ValidationMode::hw3_task3) {
         try {
             mesh_renderer = std::make_unique<MeshRenderer>(
                 mesh,
@@ -1195,6 +1330,7 @@ int main(int argc, char* argv[])
     KeyboardTransformState keyboard_transform_state;
     DebugVisualControls debug_visuals;
     CameraControls camera;
+    ProjectionControls projection;
     if (options.preset == StartupPreset::local_then_world) {
         transform_controls = make_local_then_world_preset();
     } else if (options.preset == StartupPreset::world_then_local) {
@@ -1206,6 +1342,9 @@ int main(int argc, char* argv[])
         debug_visuals.show_bounding_box = 1;
     } else if (options.preset == StartupPreset::hw3_task2_camera) {
         camera.position.x = -120.0F;
+    } else if (options.preset == StartupPreset::hw3_task3_projection) {
+        transform_controls = make_hw3_task1_debug_preset();
+        projection.use_perspective = 1;
     }
     bool popup_initialized = false;
     bool transform_controls_initialized = false;
@@ -1273,11 +1412,13 @@ int main(int argc, char* argv[])
             }
             if (options.validation == ValidationMode::none
                 || options.validation == ValidationMode::hw3_task1
-                || options.validation == ValidationMode::hw3_task2) {
+                || options.validation == ValidationMode::hw3_task2
+                || options.validation == ValidationMode::hw3_task3) {
                 build_hw3_debug_window(
                     *ui_context,
                     debug_visuals,
                     camera,
+                    projection,
                     hw3_debug_initialized);
             }
             mu_end(ui_context.get());
@@ -1291,14 +1432,19 @@ int main(int argc, char* argv[])
         glClear(GL_COLOR_BUFFER_BIT);
 
         if (mesh_renderer != nullptr) {
-            mesh_renderer->render(viewport_fit, transform_controls, camera);
+            mesh_renderer->render(
+                viewport_fit,
+                transform_controls,
+                camera,
+                projection);
         }
         if (debug_renderer != nullptr) {
             debug_renderer->render(
                 viewport_fit,
                 transform_controls,
                 debug_visuals,
-                camera);
+                camera,
+                projection);
         }
 
         if (ui_renderer != nullptr) {
@@ -1350,9 +1496,12 @@ int main(int argc, char* argv[])
                     *debug_renderer,
                     viewport_fit);
                 validation_name = "HW3 Task 1";
-            } else {
+            } else if (options.validation == ValidationMode::hw3_task2) {
                 passed = validate_hw3_task2(*mesh_renderer, viewport_fit);
                 validation_name = "HW3 Task 2";
+            } else {
+                passed = validate_hw3_task3(*mesh_renderer, viewport_fit);
+                validation_name = "HW3 Task 3";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";

@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "mesh.h"
+#include "projection.h"
 #include "shader_program.h"
 #include "transform_controls.h"
 
@@ -29,6 +30,11 @@ public:
         const ViewportFit& fit,
         const TransformControls& controls,
         const CameraControls& camera) const;
+    void render(
+        const ViewportFit& fit,
+        const TransformControls& controls,
+        const CameraControls& camera,
+        const ProjectionControls& projection) const;
 
     [[nodiscard]] std::size_t edge_index_count() const;
 

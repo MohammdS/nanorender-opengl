@@ -2,6 +2,7 @@
 
 #include "camera.h"
 #include "mesh.h"
+#include "projection.h"
 #include "shader_program.h"
 #include "transform_controls.h"
 
@@ -44,6 +45,12 @@ public:
         const TransformControls& transforms,
         const DebugVisualControls& controls,
         const CameraControls& camera) const;
+    DebugLineCounts render(
+        const ViewportFit& fit,
+        const TransformControls& transforms,
+        const DebugVisualControls& controls,
+        const CameraControls& camera,
+        const ProjectionControls& projection) const;
 
 private:
     struct Vertex {

@@ -161,6 +161,21 @@ X `639.4` to `759.4`, confirming the inverse view transformation.
 
 ![HW3 Task 2 virtual camera controls](./assets/hw3_task2_camera_controls.png)
 
+### HW3 Task 3 - Orthographic and Perspective Projection
+
+The GPU pipeline supports orthographic and perspective projection. The HW3
+window toggles the mode and controls FOV, near, and far planes.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw3-task3
+.\build\Release\nanorender_opengl.exe --preset hw3-task3-projection
+```
+
+Result: perspective reduces the rotated mesh width from `261` to `172` pixels
+with FOV `60`, near `1`, and far `5000`.
+
+![HW3 Task 3 perspective projection controls](./assets/hw3_task3_projection_controls.png)
+
 ## Build and Run
 
 Requirements:
@@ -207,7 +222,7 @@ documentation, focused commit, and push are complete.
 
 - [x] Task 1: Render GPU debug axes and object bounding boxes
 - [x] Task 2: Add a virtual camera and view matrix
-- [ ] Task 3: Add orthographic and perspective projection modes
+- [x] Task 3: Add orthographic and perspective projection modes
 - [ ] Task 4: Calculate, upload, transform, and visualize mesh normals
 
 ### HW4 - Triangle Rasterization and Depth Buffering
