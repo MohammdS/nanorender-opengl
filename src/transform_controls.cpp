@@ -2,6 +2,7 @@
 
 #include "mesh.h"
 
+#include <glm/common.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace {
@@ -75,4 +76,87 @@ TransformControls make_world_then_local_preset()
     controls.world_translation = glm::vec3(100.0F, 0.0F, 0.0F);
     controls.local_rotation = glm::vec3(0.0F, 0.0F, 15.0F);
     return controls;
+}
+
+glm::vec3& selected_transform_value(
+    TransformControls& controls,
+    const KeyboardTransformState& state)
+{
+    if (state.space == KeyboardTransformSpace::local) {
+        if (state.mode == KeyboardTransformMode::translation) {
+            return controls.local_translation;
+        }
+        if (state.mode == KeyboardTransformMode::rotation) {
+            return controls.local_rotation;
+        }
+        return controls.local_scale;
+    }
+
+    if (state.mode == KeyboardTransformMode::translation) {
+        return controls.world_translation;
+    }
+    if (state.mode == KeyboardTransformMode::rotation) {
+        return controls.world_rotation;
+    }
+    return controls.world_scale;
+}
+
+const glm::vec3& selected_transform_value(
+    const TransformControls& controls,
+    const KeyboardTransformState& state)
+{
+    if (state.space == KeyboardTransformSpace::local) {
+        if (state.mode == KeyboardTransformMode::translation) {
+            return controls.local_translation;
+        }
+        if (state.mode == KeyboardTransformMode::rotation) {
+            return controls.local_rotation;
+        }
+        return controls.local_scale;
+    }
+
+    if (state.mode == KeyboardTransformMode::translation) {
+        return controls.world_translation;
+    }
+    if (state.mode == KeyboardTransformMode::rotation) {
+        return controls.world_rotation;
+    }
+    return controls.world_scale;
+}
+
+void apply_keyboard_transform_step(
+    TransformControls& controls,
+    const KeyboardTransformState& state,
+    const glm::vec3& direction)
+{
+    glm::vec3& value = selected_transform_value(controls, state);
+    float step = 6.0F;
+    if (state.mode == KeyboardTransformMode::rotation) {
+        step = 1.5F;
+    } else if (state.mode == KeyboardTransformMode::scale) {
+        step = 0.02F;
+    }
+    value += direction * step;
+
+    if (state.mode == KeyboardTransformMode::scale) {
+        value = glm::clamp(value, glm::vec3(0.2F), glm::vec3(3.0F));
+    }
+}
+
+const char* keyboard_transform_mode_name(KeyboardTransformMode mode)
+{
+    switch (mode) {
+    case KeyboardTransformMode::translation:
+        return "Translation";
+    case KeyboardTransformMode::rotation:
+        return "Rotation";
+    case KeyboardTransformMode::scale:
+        return "Scale";
+    }
+    return "Unknown";
+}
+
+const char* keyboard_transform_space_name(KeyboardTransformSpace space)
+{
+    return space == KeyboardTransformSpace::local ? "Local" : "World";
 }

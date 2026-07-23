@@ -110,6 +110,23 @@ center and then moves it:
 
 ![HW2 Task 5 local rotation then world translation](./assets/hw2_task5_world_then_local.png)
 
+### HW2 Task 6 - Direct Keyboard Transformations
+
+Keyboard input updates the same local/world values used by the sliders and GPU
+matrices. `Q/W/E` select translation, rotation, or scale; `Z/X` select local or
+world space. The arrow keys change X/Y, while `PageUp/PageDown` change Z.
+Translation moves by `6`, rotation by `1.5` degrees, and scale by `0.02` per
+frame; scale remains clamped to `0.2–3.0`.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw2-task6
+```
+
+Result: translation and rotation steps pass, scale clamping passes, and a
+keyboard translation moves the GPU wireframe by 6 pixels.
+
+![HW2 Task 6 keyboard transformation controls](./assets/hw2_task6_keyboard_controls.png)
+
 ## Build and Run
 
 Requirements:
@@ -150,7 +167,7 @@ documentation, focused commit, and push are complete.
 - [x] Task 3: Render an indexed orthographic wireframe mesh
 - [x] Task 4: Add separate local and world transformation controls
 - [x] Task 5: Apply model transformations in the vertex shader
-- [ ] Task 6: Add direct keyboard or mouse transformation controls
+- [x] Task 6: Add direct keyboard or mouse transformation controls
 
 ### HW3 - Virtual Cameras and Projections
 

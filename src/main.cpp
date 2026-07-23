@@ -35,6 +35,7 @@ enum class ValidationMode {
     hw2_task3,
     hw2_task4,
     hw2_task5,
+    hw2_task6,
 };
 
 enum class StartupPreset {
@@ -80,6 +81,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         if (feature == "hw2-task5") {
             return {.validation = ValidationMode::hw2_task5, .valid = true};
         }
+        if (feature == "hw2-task6") {
+            return {.validation = ValidationMode::hw2_task6, .valid = true};
+        }
     }
 
     if (argc == 3 && std::string_view(argv[1]) == "--preset") {
@@ -117,6 +121,55 @@ void process_input(GLFWwindow* window)
 {
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, GLFW_TRUE);
+    }
+}
+
+void update_keyboard_transform_input(
+    GLFWwindow* window,
+    TransformControls& controls,
+    KeyboardTransformState& state)
+{
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS) {
+        state.mode = KeyboardTransformMode::translation;
+    }
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+        state.mode = KeyboardTransformMode::rotation;
+    }
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS) {
+        state.mode = KeyboardTransformMode::scale;
+    }
+    if (glfwGetKey(window, GLFW_KEY_Z) == GLFW_PRESS) {
+        state.space = KeyboardTransformSpace::local;
+    }
+    if (glfwGetKey(window, GLFW_KEY_X) == GLFW_PRESS) {
+        state.space = KeyboardTransformSpace::world;
+    }
+
+    glm::vec3 direction(0.0F);
+    if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+        direction.x -= 1.0F;
+    }
+    if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+        direction.x += 1.0F;
+    }
+    if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+        direction.y += 1.0F;
+    }
+    if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+        direction.y -= 1.0F;
+    }
+    if (glfwGetKey(window, GLFW_KEY_PAGE_UP) == GLFW_PRESS
+        || glfwGetKey(window, GLFW_KEY_KP_9) == GLFW_PRESS) {
+        direction.z += 1.0F;
+    }
+    if (glfwGetKey(window, GLFW_KEY_PAGE_DOWN) == GLFW_PRESS
+        || glfwGetKey(window, GLFW_KEY_KP_3) == GLFW_PRESS) {
+        direction.z -= 1.0F;
+    }
+
+    if (direction.x != 0.0F || direction.y != 0.0F
+        || direction.z != 0.0F) {
+        apply_keyboard_transform_step(controls, state, direction);
     }
 }
 
@@ -335,6 +388,7 @@ void draw_vec3_controls(
 void build_transform_controls_window(
     mu_Context& context,
     TransformControls& controls,
+    const KeyboardTransformState& keyboard_state,
     bool& initialized,
     bool initially_open)
 {
@@ -352,9 +406,25 @@ void build_transform_controls_window(
         int full_width[] {-1};
         mu_layout_row(&context, 1, full_width, 0);
         mu_label(&context, "GPU matrix order: World * Local * fitted vertex");
+        mu_label(&context, "Keys: Q/W/E = Translate/Rotate/Scale");
+        mu_label(&context, "Z/X = Local/World | Arrows = X/Y | PgUp/PgDn = Z");
+
+        const glm::vec3& selected =
+            selected_transform_value(controls, keyboard_state);
+        char keyboard_status[160] {};
+        std::snprintf(
+            keyboard_status,
+            sizeof(keyboard_status),
+            "Keyboard: %s %s | X %.2f  Y %.2f  Z %.2f",
+            keyboard_transform_space_name(keyboard_state.space),
+            keyboard_transform_mode_name(keyboard_state.mode),
+            selected.x,
+            selected.y,
+            selected.z);
+        mu_label(&context, keyboard_status);
 
         int columns[] {350, -1};
-        mu_layout_row(&context, 2, columns, 480);
+        mu_layout_row(&context, 2, columns, 410);
 
         mu_begin_panel(&context, "Local Transform Panel");
         mu_layout_row(&context, 1, full_width, 0);
@@ -672,6 +742,82 @@ bool validate_hw2_task5(
         && glGetError() == GL_NO_ERROR;
 }
 
+bool validate_hw2_task6(
+    const MeshRenderer& renderer,
+    const ViewportFit& fit)
+{
+    TransformControls movement_controls;
+    KeyboardTransformState movement_state;
+    const WireframeSample original = render_and_sample_transform(
+        renderer,
+        fit,
+        movement_controls);
+    apply_keyboard_transform_step(
+        movement_controls,
+        movement_state,
+        glm::vec3(1.0F, 0.0F, 0.0F));
+    const WireframeSample moved = render_and_sample_transform(
+        renderer,
+        fit,
+        movement_controls);
+    const float screen_movement = std::hypot(
+        moved.center_x - original.center_x,
+        moved.center_y - original.center_y);
+
+    TransformControls value_checks;
+    KeyboardTransformState state;
+    apply_keyboard_transform_step(
+        value_checks,
+        state,
+        glm::vec3(1.0F, -1.0F, 1.0F));
+    const bool translation_step = vec3_nearly_equal(
+        value_checks.world_translation,
+        glm::vec3(6.0F, -6.0F, 6.0F));
+
+    state.mode = KeyboardTransformMode::rotation;
+    state.space = KeyboardTransformSpace::local;
+    apply_keyboard_transform_step(
+        value_checks,
+        state,
+        glm::vec3(-1.0F, 1.0F, 0.0F));
+    const bool rotation_step = vec3_nearly_equal(
+        value_checks.local_rotation,
+        glm::vec3(-1.5F, 1.5F, 0.0F));
+
+    state.mode = KeyboardTransformMode::scale;
+    state.space = KeyboardTransformSpace::world;
+    value_checks.world_scale = glm::vec3(2.99F);
+    apply_keyboard_transform_step(
+        value_checks,
+        state,
+        glm::vec3(1.0F));
+    const bool maximum_scale_clamped = vec3_nearly_equal(
+        value_checks.world_scale,
+        glm::vec3(3.0F));
+    value_checks.world_scale = glm::vec3(0.21F);
+    apply_keyboard_transform_step(
+        value_checks,
+        state,
+        glm::vec3(-1.0F));
+    const bool scale_clamped = maximum_scale_clamped
+        && vec3_nearly_equal(
+            value_checks.world_scale,
+            glm::vec3(0.2F));
+    const bool gpu_updated = original.pixel_count >= 100
+        && moved.pixel_count >= 100 && screen_movement >= 4.0F;
+
+    std::cout << std::fixed << std::setprecision(1)
+              << "HW2 Task 6 keyboard input: translation_step="
+              << (translation_step ? "yes" : "no")
+              << " rotation_step=" << (rotation_step ? "yes" : "no")
+              << " scale_clamped=" << (scale_clamped ? "yes" : "no")
+              << " screen_movement=" << screen_movement
+              << " gpu_updated=" << (gpu_updated ? "yes" : "no") << '\n'
+              << std::defaultfloat;
+    return translation_step && rotation_step && scale_clamped && gpu_updated
+        && glGetError() == GL_NO_ERROR;
+}
+
 std::string make_window_title(
     const std::filesystem::path& mesh_path,
     const Mesh& mesh,
@@ -725,7 +871,7 @@ int main(int argc, char* argv[])
     if (!options.valid) {
         std::cerr << "Usage: nanorender_opengl "
                      "[--validate foundation|hw2-task1|hw2-task2|"
-                     "hw2-task3|hw2-task4|hw2-task5] or "
+                     "hw2-task3|hw2-task4|hw2-task5|hw2-task6] or "
                      "[--preset hw2-task5-local-world|"
                      "hw2-task5-world-local]\n";
         return EXIT_FAILURE;
@@ -811,7 +957,8 @@ int main(int argc, char* argv[])
     if (options.validation == ValidationMode::none
         || options.validation == ValidationMode::hw2_task3
         || options.validation == ValidationMode::hw2_task4
-        || options.validation == ValidationMode::hw2_task5) {
+        || options.validation == ValidationMode::hw2_task5
+        || options.validation == ValidationMode::hw2_task6) {
         try {
             mesh_renderer = std::make_unique<MeshRenderer>(
                 mesh,
@@ -843,6 +990,7 @@ int main(int argc, char* argv[])
 
     UiInputState ui_input;
     TransformControls transform_controls;
+    KeyboardTransformState keyboard_transform_state;
     if (options.preset == StartupPreset::local_then_world) {
         transform_controls = make_local_then_world_preset();
     } else if (options.preset == StartupPreset::world_then_local) {
@@ -853,6 +1001,12 @@ int main(int argc, char* argv[])
     int exit_code = EXIT_SUCCESS;
     while (glfwWindowShouldClose(window) != GLFW_TRUE) {
         process_input(window);
+        if (options.validation == ValidationMode::none) {
+            update_keyboard_transform_input(
+                window,
+                transform_controls,
+                keyboard_transform_state);
+        }
 
         int current_framebuffer_width = 0;
         int current_framebuffer_height = 0;
@@ -896,10 +1050,12 @@ int main(int argc, char* argv[])
                 popup_initialized);
             if (options.validation == ValidationMode::none
                 || options.validation == ValidationMode::hw2_task4
-                || options.validation == ValidationMode::hw2_task5) {
+                || options.validation == ValidationMode::hw2_task5
+                || options.validation == ValidationMode::hw2_task6) {
                 build_transform_controls_window(
                     *ui_context,
                     transform_controls,
+                    keyboard_transform_state,
                     transform_controls_initialized,
                     options.preset == StartupPreset::none);
             }
@@ -954,9 +1110,12 @@ int main(int argc, char* argv[])
                     framebuffer_width,
                     framebuffer_height);
                 validation_name = "HW2 Task 4";
-            } else {
+            } else if (options.validation == ValidationMode::hw2_task5) {
                 passed = validate_hw2_task5(*mesh_renderer, viewport_fit);
                 validation_name = "HW2 Task 5";
+            } else {
+                passed = validate_hw2_task6(*mesh_renderer, viewport_fit);
+                validation_name = "HW2 Task 6";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";
