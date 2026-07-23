@@ -208,6 +208,22 @@ colors after the rectangles overlap.
 
 ![HW4 Task 1 triangle bounding boxes](./assets/hw4_task1_triangle_bounding_boxes.png)
 
+### HW4 Task 2 - Filled Triangles and Barycentric Weights
+
+OpenGL hardware rasterization fills each triangle with a stable face color.
+Interpolated `(alpha, beta, gamma)` vertex attributes can be shown as an RGB
+barycentric gradient; depth testing remains disabled until Task 3.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw4-task2
+.\build\Release\nanorender_opengl.exe --preset hw4-task2-filled
+```
+
+Result: 4 triangles fill 54834 pixels. Barycentric mode covers the same pixels
+and produces 40835 interpolated colors.
+
+![HW4 Task 2 barycentric triangle filling](./assets/hw4_task2_barycentric_triangles.png)
+
 ## Build and Run
 
 Requirements:
@@ -260,7 +276,7 @@ documentation, focused commit, and push are complete.
 ### HW4 - Triangle Rasterization and Depth Buffering
 
 - [x] Task 1: Add a GPU triangle bounding-box debug view
-- [ ] Task 2: Add hardware triangle filling and visualize barycentric interpolation
+- [x] Task 2: Add hardware triangle filling and visualize barycentric interpolation
 - [ ] Task 3: Add GPU depth testing and depth-buffer visualization
 
 ### HW5 - Lighting, Materials, and Shading

@@ -50,6 +50,8 @@ add_executable(nanorender_opengl
     src/camera.h
     src/debug_renderer.cpp
     src/debug_renderer.h
+    src/filled_triangle_renderer.cpp
+    src/filled_triangle_renderer.h
     src/gpu_ui_renderer.cpp
     src/gpu_ui_renderer.h
     src/mesh.cpp

@@ -2,6 +2,7 @@
 #include <GLFW/glfw3.h>
 
 #include "debug_renderer.h"
+#include "filled_triangle_renderer.h"
 #include "gpu_ui_renderer.h"
 #include "mesh.h"
 #include "mesh_renderer.h"
@@ -47,6 +48,7 @@ enum class ValidationMode {
     hw3_task3,
     hw3_task4,
     hw4_task1,
+    hw4_task2,
 };
 
 enum class StartupPreset {
@@ -58,6 +60,7 @@ enum class StartupPreset {
     hw3_task3_projection,
     hw3_task4_normals,
     hw4_task1_bounds,
+    hw4_task2_filled,
 };
 
 struct CommandLineOptions {
@@ -73,6 +76,8 @@ struct UiInputState {
 
 struct HW4RasterControls {
     int show_triangle_bounds = 0;
+    int show_filled_triangles = 0;
+    int show_barycentric = 0;
 };
 
 CommandLineOptions parse_options(int argc, char* argv[])
@@ -118,6 +123,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         }
         if (feature == "hw4-task1") {
             return {.validation = ValidationMode::hw4_task1, .valid = true};
+        }
+        if (feature == "hw4-task2") {
+            return {.validation = ValidationMode::hw4_task2, .valid = true};
         }
     }
 
@@ -170,6 +178,13 @@ CommandLineOptions parse_options(int argc, char* argv[])
                 .validation = ValidationMode::none,
                 .valid = true,
                 .preset = StartupPreset::hw4_task1_bounds,
+            };
+        }
+        if (preset == "hw4-task2-filled") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::hw4_task2_filled,
             };
         }
     }
@@ -692,8 +707,8 @@ void build_hw4_rasterization_window(
     }
 
     const mu_Rect window_rect = use_evidence_layout
-        ? mu_rect(24, 330, 430, 130)
-        : mu_rect(840, 24, 400, 130);
+        ? mu_rect(24, 330, 430, 220)
+        : mu_rect(840, 24, 400, 220);
     if (mu_begin_window(
             &context,
             "HW4 Rasterization",
@@ -705,7 +720,17 @@ void build_hw4_rasterization_window(
             &context,
             "Show Triangle Bounding Boxes",
             &controls.show_triangle_bounds);
-        mu_label(&context, "Off restores the wireframe view.");
+        mu_label(&context, "Task 2 hardware triangle filling");
+        mu_checkbox(
+            &context,
+            "Show Filled Triangles",
+            &controls.show_filled_triangles);
+        mu_checkbox(
+            &context,
+            "Visualize Barycentric Weights",
+            &controls.show_barycentric);
+        mu_label(&context, "Filled triangles take priority over boxes.");
+        mu_label(&context, "Turn both render modes off for wireframe.");
         mu_end_window(&context);
     }
 }
@@ -1301,12 +1326,12 @@ bool validate_hw3_task4(
         && glGetError() == GL_NO_ERROR;
 }
 
-struct ColoredRectangleSample {
+struct ColoredPixelSample {
     std::size_t pixel_count = 0;
     std::size_t color_count = 0;
 };
 
-ColoredRectangleSample read_colored_rectangle_sample(int width, int height)
+ColoredPixelSample read_colored_pixel_sample(int width, int height)
 {
     std::vector<unsigned char> pixels(
         static_cast<std::size_t>(width)
@@ -1321,7 +1346,7 @@ ColoredRectangleSample read_colored_rectangle_sample(int width, int height)
         pixels.data());
 
     std::unordered_set<std::uint32_t> colors;
-    ColoredRectangleSample sample;
+    ColoredPixelSample sample;
     const std::array<int, 3> background {
         static_cast<int>(std::lround(clear_color[0] * 255.0F)),
         static_cast<int>(std::lround(clear_color[1] * 255.0F)),
@@ -1359,8 +1384,8 @@ bool validate_hw4_task1(
         make_hw4_task1_bounds_preset(),
         CameraControls {},
         ProjectionControls {});
-    const ColoredRectangleSample sample =
-        read_colored_rectangle_sample(
+    const ColoredPixelSample sample =
+        read_colored_pixel_sample(
             fit.viewport_width,
             fit.viewport_height);
     const bool all_faces_submitted = rectangles == mesh.faces.size();
@@ -1373,6 +1398,54 @@ bool validate_hw4_task1(
               << " faces=" << mesh.faces.size() << '\n';
     return all_faces_submitted && gpu_rendered
         && glGetError() == GL_NO_ERROR;
+}
+
+bool validate_hw4_task2(
+    const Mesh& mesh,
+    const FilledTriangleRenderer& renderer,
+    const ViewportFit& fit)
+{
+    const TransformControls transforms = make_hw4_task1_bounds_preset();
+    glClear(GL_COLOR_BUFFER_BIT);
+    const std::size_t triangles = renderer.render(
+        fit,
+        transforms,
+        CameraControls {},
+        ProjectionControls {},
+        false);
+    const ColoredPixelSample solid_sample = read_colored_pixel_sample(
+        fit.viewport_width,
+        fit.viewport_height);
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    renderer.render(
+        fit,
+        transforms,
+        CameraControls {},
+        ProjectionControls {},
+        true);
+    const ColoredPixelSample barycentric_sample =
+        read_colored_pixel_sample(
+            fit.viewport_width,
+            fit.viewport_height);
+
+    const bool all_faces_submitted = triangles == mesh.faces.size();
+    const bool solid_fill_rendered =
+        solid_sample.pixel_count >= 10000 && solid_sample.color_count >= 2;
+    const bool barycentric_interpolated =
+        barycentric_sample.pixel_count == solid_sample.pixel_count
+        && barycentric_sample.color_count >= 100;
+
+    std::cout << "HW4 Task 2 filled triangles: triangles=" << triangles
+              << " solid_pixels=" << solid_sample.pixel_count
+              << " solid_colors=" << solid_sample.color_count
+              << " barycentric_pixels="
+              << barycentric_sample.pixel_count
+              << " barycentric_colors="
+              << barycentric_sample.color_count
+              << " faces=" << mesh.faces.size() << '\n';
+    return all_faces_submitted && solid_fill_rendered
+        && barycentric_interpolated && glGetError() == GL_NO_ERROR;
 }
 
 std::string make_window_title(
@@ -1430,11 +1503,12 @@ int main(int argc, char* argv[])
                      "[--validate foundation|hw2-task1|hw2-task2|"
                      "hw2-task3|hw2-task4|hw2-task5|hw2-task6|"
                      "hw3-task1|hw3-task2|hw3-task3|hw3-task4|"
-                     "hw4-task1] or "
+                     "hw4-task1|hw4-task2] or "
                      "[--preset hw2-task5-local-world|"
                      "hw2-task5-world-local|hw3-task1-debug|"
                      "hw3-task2-camera|hw3-task3-projection|"
-                     "hw3-task4-normals|hw4-task1-bounds]\n";
+                     "hw3-task4-normals|hw4-task1-bounds|"
+                     "hw4-task2-filled]\n";
         return EXIT_FAILURE;
     }
 
@@ -1519,6 +1593,7 @@ int main(int argc, char* argv[])
     std::unique_ptr<MeshRenderer> mesh_renderer;
     std::unique_ptr<DebugRenderer> debug_renderer;
     std::unique_ptr<TriangleBoundsRenderer> triangle_bounds_renderer;
+    std::unique_ptr<FilledTriangleRenderer> filled_triangle_renderer;
     if (options.validation == ValidationMode::none
         || options.validation == ValidationMode::hw2_task3
         || options.validation == ValidationMode::hw2_task4
@@ -1572,6 +1647,24 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
     }
+    if (options.validation == ValidationMode::none
+        || options.validation == ValidationMode::hw4_task2) {
+        try {
+            filled_triangle_renderer =
+                std::make_unique<FilledTriangleRenderer>(
+                    mesh,
+                    find_shader_directory(argv[0]));
+        } catch (const std::exception& exception) {
+            std::cerr << "GPU filled-triangle initialization failed: "
+                      << exception.what() << '\n';
+            triangle_bounds_renderer.reset();
+            debug_renderer.reset();
+            mesh_renderer.reset();
+            glfwDestroyWindow(window);
+            glfwTerminate();
+            return EXIT_FAILURE;
+        }
+    }
     if (options.validation != ValidationMode::foundation) {
         try {
             ui_context = std::make_unique<mu_Context>();
@@ -1617,9 +1710,16 @@ int main(int argc, char* argv[])
     } else if (options.preset == StartupPreset::hw4_task1_bounds) {
         transform_controls = make_hw4_task1_bounds_preset();
         hw4_raster.show_triangle_bounds = 1;
+    } else if (options.preset == StartupPreset::hw4_task2_filled) {
+        transform_controls = make_hw4_task1_bounds_preset();
+        hw4_raster.show_filled_triangles = 1;
+        hw4_raster.show_barycentric = 1;
     }
     if (options.validation == ValidationMode::hw4_task1) {
         hw4_raster.show_triangle_bounds = 1;
+    } else if (options.validation == ValidationMode::hw4_task2) {
+        hw4_raster.show_filled_triangles = 1;
+        hw4_raster.show_barycentric = 1;
     }
     bool popup_initialized = false;
     bool transform_controls_initialized = false;
@@ -1697,15 +1797,20 @@ int main(int argc, char* argv[])
                     camera,
                     projection,
                     hw3_debug_initialized,
-                    options.preset != StartupPreset::hw4_task1_bounds);
+                    options.preset != StartupPreset::hw4_task1_bounds
+                        && options.preset
+                            != StartupPreset::hw4_task2_filled);
             }
             if (options.validation == ValidationMode::none
-                || options.validation == ValidationMode::hw4_task1) {
+                || options.validation == ValidationMode::hw4_task1
+                || options.validation == ValidationMode::hw4_task2) {
                 build_hw4_rasterization_window(
                     *ui_context,
                     hw4_raster,
                     hw4_raster_initialized,
-                    options.preset == StartupPreset::hw4_task1_bounds);
+                    options.preset == StartupPreset::hw4_task1_bounds
+                        || options.preset
+                            == StartupPreset::hw4_task2_filled);
             }
             mu_end(ui_context.get());
         }
@@ -1717,7 +1822,15 @@ int main(int argc, char* argv[])
             clear_color[3]);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        if (hw4_raster.show_triangle_bounds != 0
+        if (hw4_raster.show_filled_triangles != 0
+            && filled_triangle_renderer != nullptr) {
+            filled_triangle_renderer->render(
+                viewport_fit,
+                transform_controls,
+                camera,
+                projection,
+                hw4_raster.show_barycentric != 0);
+        } else if (hw4_raster.show_triangle_bounds != 0
             && triangle_bounds_renderer != nullptr) {
             triangle_bounds_renderer->render(
                 viewport_fit,
@@ -1804,12 +1917,18 @@ int main(int argc, char* argv[])
                     *debug_renderer,
                     viewport_fit);
                 validation_name = "HW3 Task 4";
-            } else {
+            } else if (options.validation == ValidationMode::hw4_task1) {
                 passed = validate_hw4_task1(
                     mesh,
                     *triangle_bounds_renderer,
                     viewport_fit);
                 validation_name = "HW4 Task 1";
+            } else {
+                passed = validate_hw4_task2(
+                    mesh,
+                    *filled_triangle_renderer,
+                    viewport_fit);
+                validation_name = "HW4 Task 2";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";
@@ -1826,6 +1945,7 @@ int main(int argc, char* argv[])
 
     ui_renderer.reset();
     ui_context.reset();
+    filled_triangle_renderer.reset();
     triangle_bounds_renderer.reset();
     debug_renderer.reset();
     mesh_renderer.reset();
