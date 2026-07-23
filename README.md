@@ -192,6 +192,22 @@ lines on the rotated mesh.
 
 ![HW3 Task 4 face and vertex normals](./assets/hw3_task4_normals.png)
 
+### HW4 Task 1 - Triangle Bounding-Box Rasterization
+
+A geometry shader converts each projected triangle into its clamped
+screen-space bounding rectangle and fills it with a stable per-face color. The
+HW4 checkbox switches between this GPU debug view and the wireframe.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw4-task1
+.\build\Release\nanorender_opengl.exe --preset hw4-task1-bounds
+```
+
+Result: 4 faces produce 4 rectangles, 110374 colored pixels, and 3 visible
+colors after the rectangles overlap.
+
+![HW4 Task 1 triangle bounding boxes](./assets/hw4_task1_triangle_bounding_boxes.png)
+
 ## Build and Run
 
 Requirements:
@@ -243,7 +259,7 @@ documentation, focused commit, and push are complete.
 
 ### HW4 - Triangle Rasterization and Depth Buffering
 
-- [ ] Task 1: Add a GPU triangle bounding-box debug view
+- [x] Task 1: Add a GPU triangle bounding-box debug view
 - [ ] Task 2: Add hardware triangle filling and visualize barycentric interpolation
 - [ ] Task 3: Add GPU depth testing and depth-buffer visualization
 

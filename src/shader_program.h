@@ -11,6 +11,10 @@ public:
     ShaderProgram(
         const std::filesystem::path& vertex_path,
         const std::filesystem::path& fragment_path);
+    ShaderProgram(
+        const std::filesystem::path& vertex_path,
+        const std::filesystem::path& geometry_path,
+        const std::filesystem::path& fragment_path);
     ~ShaderProgram();
 
     ShaderProgram(const ShaderProgram&) = delete;

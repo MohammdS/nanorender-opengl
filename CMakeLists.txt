@@ -65,6 +65,8 @@ add_executable(nanorender_opengl
     src/shader_program.h
     src/transform_controls.cpp
     src/transform_controls.h
+    src/triangle_bounds_renderer.cpp
+    src/triangle_bounds_renderer.h
 )
 
 target_include_directories(

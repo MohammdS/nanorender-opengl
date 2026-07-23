@@ -85,6 +85,13 @@ TransformControls make_hw3_task1_debug_preset()
     return controls;
 }
 
+TransformControls make_hw4_task1_bounds_preset()
+{
+    TransformControls controls;
+    controls.local_rotation = glm::vec3(40.0F, 50.0F, 30.0F);
+    return controls;
+}
+
 glm::vec3& selected_transform_value(
     TransformControls& controls,
     const KeyboardTransformState& state)
