@@ -16,6 +16,11 @@ struct Mesh {
     std::vector<TriangleFace> faces;
 };
 
+struct MeshNormals {
+    std::vector<glm::vec3> face_normals;
+    std::vector<glm::vec3> vertex_normals;
+};
+
 struct MeshBounds {
     glm::vec3 min {0.0F};
     glm::vec3 max {0.0F};
@@ -32,6 +37,7 @@ struct ViewportFit {
 };
 
 Mesh load_obj_mesh(const std::filesystem::path& path);
+MeshNormals calculate_mesh_normals(const Mesh& mesh);
 MeshBounds calculate_mesh_bounds(const Mesh& mesh);
 ViewportFit calculate_viewport_fit(
     const Mesh& mesh,

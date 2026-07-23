@@ -176,6 +176,22 @@ with FOV `60`, near `1`, and far `5000`.
 
 ![HW3 Task 3 perspective projection controls](./assets/hw3_task3_projection_controls.png)
 
+### HW3 Task 4 - Face and Vertex Normals
+
+Each face normal is a normalized edge cross product. Vertex normals normalize
+the sum of adjacent face normals; both debug-line sets are uploaded to the GPU
+and use the mesh transformation pipeline.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw3-task4
+.\build\Release\nanorender_opengl.exe --preset hw3-task4-normals
+```
+
+Result: 4 unit face normals and 4 unit vertex normals produce 8 GPU debug
+lines on the rotated mesh.
+
+![HW3 Task 4 face and vertex normals](./assets/hw3_task4_normals.png)
+
 ## Build and Run
 
 Requirements:
@@ -223,7 +239,7 @@ documentation, focused commit, and push are complete.
 - [x] Task 1: Render GPU debug axes and object bounding boxes
 - [x] Task 2: Add a virtual camera and view matrix
 - [x] Task 3: Add orthographic and perspective projection modes
-- [ ] Task 4: Calculate, upload, transform, and visualize mesh normals
+- [x] Task 4: Calculate, upload, transform, and visualize mesh normals
 
 ### HW4 - Triangle Rasterization and Depth Buffering
 

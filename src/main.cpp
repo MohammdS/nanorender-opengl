@@ -7,6 +7,8 @@
 #include "mesh_renderer.h"
 #include "transform_controls.h"
 
+#include <glm/geometric.hpp>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -41,6 +43,7 @@ enum class ValidationMode {
     hw3_task1,
     hw3_task2,
     hw3_task3,
+    hw3_task4,
 };
 
 enum class StartupPreset {
@@ -50,6 +53,7 @@ enum class StartupPreset {
     hw3_task1_debug,
     hw3_task2_camera,
     hw3_task3_projection,
+    hw3_task4_normals,
 };
 
 struct CommandLineOptions {
@@ -101,6 +105,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         if (feature == "hw3-task3") {
             return {.validation = ValidationMode::hw3_task3, .valid = true};
         }
+        if (feature == "hw3-task4") {
+            return {.validation = ValidationMode::hw3_task4, .valid = true};
+        }
     }
 
     if (argc == 3 && std::string_view(argv[1]) == "--preset") {
@@ -138,6 +145,13 @@ CommandLineOptions parse_options(int argc, char* argv[])
                 .validation = ValidationMode::none,
                 .valid = true,
                 .preset = StartupPreset::hw3_task3_projection,
+            };
+        }
+        if (preset == "hw3-task4-normals") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::hw3_task4_normals,
             };
         }
     }
@@ -598,11 +612,12 @@ void build_hw3_debug_window(
             camera.rotation,
             -180.0F,
             180.0F);
-        mu_layout_row(&context, 1, full_width, 0);
+        mu_label(&context, "Task 3 projection");
+        int action_widths[] {190, -1};
+        mu_layout_row(&context, 2, action_widths, 0);
         if (mu_button(&context, "Reset Camera")) {
             camera = CameraControls {};
         }
-        mu_label(&context, "Task 3 projection");
         if (mu_button(
                 &context,
                 projection.use_perspective != 0
@@ -629,6 +644,18 @@ void build_hw3_debug_window(
             projection.far_plane,
             1000.0F,
             10000.0F);
+        mu_layout_row(&context, 1, full_width, 0);
+        mu_label(&context, "Task 4 GPU normal visuals");
+        int normal_widths[] {190, -1};
+        mu_layout_row(&context, 2, normal_widths, 0);
+        mu_checkbox(
+            &context,
+            "Show Face Normals",
+            &controls.show_face_normals);
+        mu_checkbox(
+            &context,
+            "Show Vertex Normals",
+            &controls.show_vertex_normals);
         mu_end_window(&context);
     }
 }
@@ -1135,6 +1162,95 @@ bool validate_hw3_task3(
         && glGetError() == GL_NO_ERROR;
 }
 
+std::size_t count_normal_pixels(int width, int height)
+{
+    std::vector<unsigned char> pixels(
+        static_cast<std::size_t>(width)
+            * static_cast<std::size_t>(height) * 3);
+    glReadPixels(
+        0,
+        0,
+        width,
+        height,
+        GL_RGB,
+        GL_UNSIGNED_BYTE,
+        pixels.data());
+
+    std::size_t count = 0;
+    for (std::size_t offset = 0; offset < pixels.size(); offset += 3) {
+        const int red = pixels[offset];
+        const int green = pixels[offset + 1];
+        const int blue = pixels[offset + 2];
+        const bool face_normal =
+            red >= 200 && green <= 110 && blue >= 130;
+        const bool vertex_normal =
+            red >= 200 && green >= 170 && blue <= 110;
+        if (face_normal || vertex_normal) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+std::size_t count_unit_normals(const std::vector<glm::vec3>& normals)
+{
+    return static_cast<std::size_t>(std::count_if(
+        normals.begin(),
+        normals.end(),
+        [](const glm::vec3& normal) {
+            return nearly_equal(glm::length(normal), 1.0F, 0.001F);
+        }));
+}
+
+bool validate_hw3_task4(
+    const Mesh& mesh,
+    const MeshNormals& normals,
+    const DebugRenderer& renderer,
+    const ViewportFit& fit)
+{
+    DebugVisualControls controls;
+    controls.show_face_normals = 1;
+    controls.show_vertex_normals = 1;
+    const TransformControls transforms = make_hw3_task1_debug_preset();
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    const DebugLineCounts drawn = renderer.render(
+        fit,
+        transforms,
+        controls,
+        CameraControls {},
+        ProjectionControls {},
+        &mesh,
+        &normals);
+    const std::size_t unit_face_normals =
+        count_unit_normals(normals.face_normals);
+    const std::size_t unit_vertex_normals =
+        count_unit_normals(normals.vertex_normals);
+    const std::size_t normal_pixels = count_normal_pixels(
+        fit.viewport_width,
+        fit.viewport_height);
+    const bool counts_are_valid =
+        normals.face_normals.size() == mesh.faces.size()
+        && normals.vertex_normals.size() == mesh.vertices.size()
+        && drawn.face_normals == mesh.faces.size()
+        && drawn.vertex_normals == mesh.vertices.size();
+    const bool normals_are_unit =
+        unit_face_normals == normals.face_normals.size()
+        && unit_vertex_normals == normals.vertex_normals.size();
+    const bool gpu_rendered = normal_pixels >= 100;
+
+    std::cout << "HW3 Task 4 normals: face_normals="
+              << normals.face_normals.size()
+              << " unit_face_normals=" << unit_face_normals
+              << " vertex_normals=" << normals.vertex_normals.size()
+              << " unit_vertex_normals=" << unit_vertex_normals
+              << " drawn_face_lines=" << drawn.face_normals
+              << " drawn_vertex_lines=" << drawn.vertex_normals
+              << " normal_pixels=" << normal_pixels << '\n';
+    return counts_are_valid && normals_are_unit && gpu_rendered
+        && glGetError() == GL_NO_ERROR;
+}
+
 std::string make_window_title(
     const std::filesystem::path& mesh_path,
     const Mesh& mesh,
@@ -1189,10 +1305,11 @@ int main(int argc, char* argv[])
         std::cerr << "Usage: nanorender_opengl "
                      "[--validate foundation|hw2-task1|hw2-task2|"
                      "hw2-task3|hw2-task4|hw2-task5|hw2-task6|"
-                     "hw3-task1|hw3-task2|hw3-task3] or "
+                     "hw3-task1|hw3-task2|hw3-task3|hw3-task4] or "
                      "[--preset hw2-task5-local-world|"
                      "hw2-task5-world-local|hw3-task1-debug|"
-                     "hw3-task2-camera|hw3-task3-projection]\n";
+                     "hw3-task2-camera|hw3-task3-projection|"
+                     "hw3-task4-normals]\n";
         return EXIT_FAILURE;
     }
 
@@ -1245,11 +1362,13 @@ int main(int argc, char* argv[])
               << GLAD_VERSION_MINOR(loaded_version) << " initialized.\n";
 
     Mesh mesh;
+    MeshNormals mesh_normals;
     std::filesystem::path mesh_path;
     ViewportFit viewport_fit;
     try {
         mesh_path = find_model_path(argv[0]);
         mesh = load_obj_mesh(mesh_path);
+        mesh_normals = calculate_mesh_normals(mesh);
         viewport_fit = calculate_viewport_fit(
             mesh,
             framebuffer_width,
@@ -1281,7 +1400,8 @@ int main(int argc, char* argv[])
         || options.validation == ValidationMode::hw2_task6
         || options.validation == ValidationMode::hw3_task1
         || options.validation == ValidationMode::hw3_task2
-        || options.validation == ValidationMode::hw3_task3) {
+        || options.validation == ValidationMode::hw3_task3
+        || options.validation == ValidationMode::hw3_task4) {
         try {
             mesh_renderer = std::make_unique<MeshRenderer>(
                 mesh,
@@ -1295,7 +1415,8 @@ int main(int argc, char* argv[])
         }
     }
     if (options.validation == ValidationMode::none
-        || options.validation == ValidationMode::hw3_task1) {
+        || options.validation == ValidationMode::hw3_task1
+        || options.validation == ValidationMode::hw3_task4) {
         try {
             debug_renderer = std::make_unique<DebugRenderer>(
                 find_shader_directory(argv[0]));
@@ -1345,6 +1466,10 @@ int main(int argc, char* argv[])
     } else if (options.preset == StartupPreset::hw3_task3_projection) {
         transform_controls = make_hw3_task1_debug_preset();
         projection.use_perspective = 1;
+    } else if (options.preset == StartupPreset::hw3_task4_normals) {
+        transform_controls = make_hw3_task1_debug_preset();
+        debug_visuals.show_face_normals = 1;
+        debug_visuals.show_vertex_normals = 1;
     }
     bool popup_initialized = false;
     bool transform_controls_initialized = false;
@@ -1413,7 +1538,8 @@ int main(int argc, char* argv[])
             if (options.validation == ValidationMode::none
                 || options.validation == ValidationMode::hw3_task1
                 || options.validation == ValidationMode::hw3_task2
-                || options.validation == ValidationMode::hw3_task3) {
+                || options.validation == ValidationMode::hw3_task3
+                || options.validation == ValidationMode::hw3_task4) {
                 build_hw3_debug_window(
                     *ui_context,
                     debug_visuals,
@@ -1444,7 +1570,9 @@ int main(int argc, char* argv[])
                 transform_controls,
                 debug_visuals,
                 camera,
-                projection);
+                projection,
+                &mesh,
+                &mesh_normals);
         }
 
         if (ui_renderer != nullptr) {
@@ -1499,9 +1627,16 @@ int main(int argc, char* argv[])
             } else if (options.validation == ValidationMode::hw3_task2) {
                 passed = validate_hw3_task2(*mesh_renderer, viewport_fit);
                 validation_name = "HW3 Task 2";
-            } else {
+            } else if (options.validation == ValidationMode::hw3_task3) {
                 passed = validate_hw3_task3(*mesh_renderer, viewport_fit);
                 validation_name = "HW3 Task 3";
+            } else {
+                passed = validate_hw3_task4(
+                    mesh,
+                    mesh_normals,
+                    *debug_renderer,
+                    viewport_fit);
+                validation_name = "HW3 Task 4";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";

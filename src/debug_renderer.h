@@ -16,12 +16,16 @@ struct DebugVisualControls {
     int show_local_axes = 0;
     int show_world_axes = 0;
     int show_bounding_box = 0;
+    int show_face_normals = 0;
+    int show_vertex_normals = 0;
 };
 
 struct DebugLineCounts {
     std::size_t local_axes = 0;
     std::size_t world_axes = 0;
     std::size_t bounding_box_edges = 0;
+    std::size_t face_normals = 0;
+    std::size_t vertex_normals = 0;
 
     [[nodiscard]] std::size_t total() const;
 };
@@ -50,7 +54,9 @@ public:
         const TransformControls& transforms,
         const DebugVisualControls& controls,
         const CameraControls& camera,
-        const ProjectionControls& projection) const;
+        const ProjectionControls& projection,
+        const Mesh* mesh = nullptr,
+        const MeshNormals* normals = nullptr) const;
 
 private:
     struct Vertex {

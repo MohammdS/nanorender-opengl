@@ -31,7 +31,8 @@ float debug_axis_length(const ViewportFit& fit)
 
 std::size_t DebugLineCounts::total() const
 {
-    return local_axes + world_axes + bounding_box_edges;
+    return local_axes + world_axes + bounding_box_edges + face_normals
+        + vertex_normals;
 }
 
 DebugRenderer::DebugRenderer(const std::filesystem::path& shader_directory)
@@ -143,7 +144,9 @@ DebugLineCounts DebugRenderer::render(
     const TransformControls& transforms,
     const DebugVisualControls& controls,
     const CameraControls& camera,
-    const ProjectionControls& projection_controls) const
+    const ProjectionControls& projection_controls,
+    const Mesh* mesh,
+    const MeshNormals* normals) const
 {
     std::vector<DebugVertex> model_lines;
     std::vector<DebugVertex> world_lines;
@@ -216,6 +219,40 @@ DebugLineCounts DebugRenderer::render(
             origin + glm::vec3(0.0F, 0.0F, axis_length),
             glm::vec3(0.1F, 0.3F, 0.8F));
         counts.world_axes = 3;
+    }
+
+    if (mesh != nullptr && normals != nullptr) {
+        const float normal_length =
+            std::max({fit.size.x, fit.size.y, fit.size.z}) * 0.35F;
+        if (controls.show_face_normals != 0
+            && normals->face_normals.size() == mesh->faces.size()) {
+            for (std::size_t index = 0; index < mesh->faces.size(); ++index) {
+                const TriangleFace& face = mesh->faces[index];
+                const glm::vec3 center =
+                    (mesh->vertices[face.indices[0]]
+                     + mesh->vertices[face.indices[1]]
+                     + mesh->vertices[face.indices[2]])
+                    / 3.0F;
+                append_line(
+                    model_lines,
+                    center,
+                    center + normals->face_normals[index] * normal_length,
+                    glm::vec3(1.0F, 0.25F, 0.72F));
+            }
+            counts.face_normals = normals->face_normals.size();
+        }
+        if (controls.show_vertex_normals != 0
+            && normals->vertex_normals.size() == mesh->vertices.size()) {
+            for (std::size_t index = 0; index < mesh->vertices.size(); ++index) {
+                append_line(
+                    model_lines,
+                    mesh->vertices[index],
+                    mesh->vertices[index]
+                        + normals->vertex_normals[index] * normal_length,
+                    glm::vec3(1.0F, 0.9F, 0.18F));
+            }
+            counts.vertex_normals = normals->vertex_normals.size();
+        }
     }
 
     const auto convert = [](const std::vector<DebugVertex>& source) {

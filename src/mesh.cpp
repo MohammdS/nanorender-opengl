@@ -1,6 +1,7 @@
 #include "mesh.h"
 
 #include <glm/common.hpp>
+#include <glm/geometric.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -119,6 +120,44 @@ Mesh load_obj_mesh(const std::filesystem::path& path)
             + path.string());
     }
     return mesh;
+}
+
+MeshNormals calculate_mesh_normals(const Mesh& mesh)
+{
+    MeshNormals normals;
+    normals.face_normals.reserve(mesh.faces.size());
+    normals.vertex_normals.assign(mesh.vertices.size(), glm::vec3(0.0F));
+
+    const auto normalize_or_zero = [](const glm::vec3& value) {
+        const float length = glm::length(value);
+        return length > std::numeric_limits<float>::epsilon()
+            ? value / length
+            : glm::vec3(0.0F);
+    };
+
+    for (const TriangleFace& face : mesh.faces) {
+        for (const std::uint32_t index : face.indices) {
+            if (index >= mesh.vertices.size()) {
+                throw std::runtime_error(
+                    "Cannot calculate normals with an invalid face index.");
+            }
+        }
+
+        const glm::vec3& a = mesh.vertices[face.indices[0]];
+        const glm::vec3& b = mesh.vertices[face.indices[1]];
+        const glm::vec3& c = mesh.vertices[face.indices[2]];
+        const glm::vec3 face_normal =
+            normalize_or_zero(glm::cross(b - a, c - a));
+        normals.face_normals.push_back(face_normal);
+        for (const std::uint32_t index : face.indices) {
+            normals.vertex_normals[index] += face_normal;
+        }
+    }
+
+    for (glm::vec3& vertex_normal : normals.vertex_normals) {
+        vertex_normal = normalize_or_zero(vertex_normal);
+    }
+    return normals;
 }
 
 MeshBounds calculate_mesh_bounds(const Mesh& mesh)
