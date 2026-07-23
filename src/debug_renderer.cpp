@@ -82,6 +82,7 @@ void DebugRenderer::draw_batch(
     const glm::mat4& viewport_fit,
     const glm::mat4& local_transform,
     const glm::mat4& world_transform,
+    const glm::mat4& view,
     const glm::mat4& projection) const
 {
     if (vertices.empty()) {
@@ -99,6 +100,7 @@ void DebugRenderer::draw_batch(
     shader_.set_mat4("u_viewport_fit", viewport_fit);
     shader_.set_mat4("u_local_transform", local_transform);
     shader_.set_mat4("u_world_transform", world_transform);
+    shader_.set_mat4("u_view", view);
     shader_.set_mat4("u_projection", projection);
     glBindVertexArray(vertex_array_);
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_);
@@ -118,6 +120,15 @@ DebugLineCounts DebugRenderer::render(
     const ViewportFit& fit,
     const TransformControls& transforms,
     const DebugVisualControls& controls) const
+{
+    return render(fit, transforms, controls, CameraControls {});
+}
+
+DebugLineCounts DebugRenderer::render(
+    const ViewportFit& fit,
+    const TransformControls& transforms,
+    const DebugVisualControls& controls,
+    const CameraControls& camera) const
 {
     std::vector<DebugVertex> model_lines;
     std::vector<DebugVertex> world_lines;
@@ -211,17 +222,20 @@ DebugLineCounts DebugRenderer::render(
         -10000.0F,
         10000.0F);
     const glm::mat4 identity(1.0F);
+    const glm::mat4 view = build_camera_view_matrix(camera);
     draw_batch(
         convert(model_lines),
         viewport_fit,
         build_local_transform_matrix(transforms, fit),
         build_world_transform_matrix(transforms),
+        view,
         projection);
     draw_batch(
         convert(world_lines),
         viewport_fit,
         identity,
         identity,
+        view,
         projection);
     return counts;
 }

@@ -38,6 +38,7 @@ enum class ValidationMode {
     hw2_task5,
     hw2_task6,
     hw3_task1,
+    hw3_task2,
 };
 
 enum class StartupPreset {
@@ -45,6 +46,7 @@ enum class StartupPreset {
     local_then_world,
     world_then_local,
     hw3_task1_debug,
+    hw3_task2_camera,
 };
 
 struct CommandLineOptions {
@@ -90,6 +92,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         if (feature == "hw3-task1") {
             return {.validation = ValidationMode::hw3_task1, .valid = true};
         }
+        if (feature == "hw3-task2") {
+            return {.validation = ValidationMode::hw3_task2, .valid = true};
+        }
     }
 
     if (argc == 3 && std::string_view(argv[1]) == "--preset") {
@@ -113,6 +118,13 @@ CommandLineOptions parse_options(int argc, char* argv[])
                 .validation = ValidationMode::none,
                 .valid = true,
                 .preset = StartupPreset::hw3_task1_debug,
+            };
+        }
+        if (preset == "hw3-task2-camera") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::hw3_task2_camera,
             };
         }
     }
@@ -507,6 +519,7 @@ void build_transform_controls_window(
 void build_hw3_debug_window(
     mu_Context& context,
     DebugVisualControls& controls,
+    CameraControls& camera,
     bool& initialized)
 {
     mu_Container* container = mu_get_container(&context, "HW3 Camera / Debug");
@@ -518,7 +531,7 @@ void build_hw3_debug_window(
     if (mu_begin_window(
             &context,
             "HW3 Camera / Debug",
-            mu_rect(24, 340, 430, 190))) {
+            mu_rect(24, 330, 430, 370))) {
         int full_width[] {-1};
         mu_layout_row(&context, 1, full_width, 0);
         mu_label(&context, "Task 1 GPU debug visuals");
@@ -528,6 +541,23 @@ void build_hw3_debug_window(
             &context,
             "Show Bounding Box",
             &controls.show_bounding_box);
+        mu_label(&context, "Task 2 virtual camera (inverse view matrix)");
+        draw_vec3_controls(
+            context,
+            "Position (-600 to 600)",
+            camera.position,
+            -600.0F,
+            600.0F);
+        draw_vec3_controls(
+            context,
+            "Rotation degrees (-180 to 180)",
+            camera.rotation,
+            -180.0F,
+            180.0F);
+        mu_layout_row(&context, 1, full_width, 0);
+        if (mu_button(&context, "Reset Camera")) {
+            camera = CameraControls {};
+        }
         mu_end_window(&context);
     }
 }
@@ -929,6 +959,48 @@ bool validate_hw3_task1(
         && glGetError() == GL_NO_ERROR;
 }
 
+WireframeSample render_and_sample_camera(
+    const MeshRenderer& renderer,
+    const ViewportFit& fit,
+    const CameraControls& camera)
+{
+    glClear(GL_COLOR_BUFFER_BIT);
+    renderer.render(fit, TransformControls {}, camera);
+    return read_wireframe_sample(fit.viewport_width, fit.viewport_height);
+}
+
+bool validate_hw3_task2(
+    const MeshRenderer& renderer,
+    const ViewportFit& fit)
+{
+    const CameraControls default_camera;
+    CameraControls left_camera;
+    left_camera.position.x = -120.0F;
+
+    const WireframeSample default_sample = render_and_sample_camera(
+        renderer,
+        fit,
+        default_camera);
+    const WireframeSample left_sample = render_and_sample_camera(
+        renderer,
+        fit,
+        left_camera);
+    const float shift = left_sample.center_x - default_sample.center_x;
+    const bool both_rendered = default_sample.pixel_count >= 100
+        && left_sample.pixel_count >= 100;
+    const bool inverse_view_confirmed = nearly_equal(shift, 120.0F, 1.0F);
+
+    std::cout << std::fixed << std::setprecision(1)
+              << "HW3 Task 2 camera: default_center_x="
+              << default_sample.center_x << " camera_left_center_x="
+              << left_sample.center_x << " shift=" << shift
+              << " inverse_view="
+              << (inverse_view_confirmed ? "yes" : "no") << '\n'
+              << std::defaultfloat;
+    return both_rendered && inverse_view_confirmed
+        && glGetError() == GL_NO_ERROR;
+}
+
 std::string make_window_title(
     const std::filesystem::path& mesh_path,
     const Mesh& mesh,
@@ -983,9 +1055,10 @@ int main(int argc, char* argv[])
         std::cerr << "Usage: nanorender_opengl "
                      "[--validate foundation|hw2-task1|hw2-task2|"
                      "hw2-task3|hw2-task4|hw2-task5|hw2-task6|"
-                     "hw3-task1] or "
+                     "hw3-task1|hw3-task2] or "
                      "[--preset hw2-task5-local-world|"
-                     "hw2-task5-world-local|hw3-task1-debug]\n";
+                     "hw2-task5-world-local|hw3-task1-debug|"
+                     "hw3-task2-camera]\n";
         return EXIT_FAILURE;
     }
 
@@ -1072,7 +1145,8 @@ int main(int argc, char* argv[])
         || options.validation == ValidationMode::hw2_task4
         || options.validation == ValidationMode::hw2_task5
         || options.validation == ValidationMode::hw2_task6
-        || options.validation == ValidationMode::hw3_task1) {
+        || options.validation == ValidationMode::hw3_task1
+        || options.validation == ValidationMode::hw3_task2) {
         try {
             mesh_renderer = std::make_unique<MeshRenderer>(
                 mesh,
@@ -1120,6 +1194,7 @@ int main(int argc, char* argv[])
     TransformControls transform_controls;
     KeyboardTransformState keyboard_transform_state;
     DebugVisualControls debug_visuals;
+    CameraControls camera;
     if (options.preset == StartupPreset::local_then_world) {
         transform_controls = make_local_then_world_preset();
     } else if (options.preset == StartupPreset::world_then_local) {
@@ -1129,6 +1204,8 @@ int main(int argc, char* argv[])
         debug_visuals.show_local_axes = 1;
         debug_visuals.show_world_axes = 1;
         debug_visuals.show_bounding_box = 1;
+    } else if (options.preset == StartupPreset::hw3_task2_camera) {
+        camera.position.x = -120.0F;
     }
     bool popup_initialized = false;
     bool transform_controls_initialized = false;
@@ -1195,10 +1272,12 @@ int main(int argc, char* argv[])
                     options.preset == StartupPreset::none);
             }
             if (options.validation == ValidationMode::none
-                || options.validation == ValidationMode::hw3_task1) {
+                || options.validation == ValidationMode::hw3_task1
+                || options.validation == ValidationMode::hw3_task2) {
                 build_hw3_debug_window(
                     *ui_context,
                     debug_visuals,
+                    camera,
                     hw3_debug_initialized);
             }
             mu_end(ui_context.get());
@@ -1212,13 +1291,14 @@ int main(int argc, char* argv[])
         glClear(GL_COLOR_BUFFER_BIT);
 
         if (mesh_renderer != nullptr) {
-            mesh_renderer->render(viewport_fit, transform_controls);
+            mesh_renderer->render(viewport_fit, transform_controls, camera);
         }
         if (debug_renderer != nullptr) {
             debug_renderer->render(
                 viewport_fit,
                 transform_controls,
-                debug_visuals);
+                debug_visuals,
+                camera);
         }
 
         if (ui_renderer != nullptr) {
@@ -1264,12 +1344,15 @@ int main(int argc, char* argv[])
             } else if (options.validation == ValidationMode::hw2_task6) {
                 passed = validate_hw2_task6(*mesh_renderer, viewport_fit);
                 validation_name = "HW2 Task 6";
-            } else {
+            } else if (options.validation == ValidationMode::hw3_task1) {
                 passed = validate_hw3_task1(
                     *mesh_renderer,
                     *debug_renderer,
                     viewport_fit);
                 validation_name = "HW3 Task 1";
+            } else {
+                passed = validate_hw3_task2(*mesh_renderer, viewport_fit);
+                validation_name = "HW3 Task 2";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";

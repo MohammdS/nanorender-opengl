@@ -144,6 +144,23 @@ lines, and 4 rendered faces.
 
 ![HW3 Task 1 debug axes and bounding box](./assets/hw3_task1_debug_visuals.png)
 
+### HW3 Task 2 - Virtual Camera and View Matrix
+
+`CameraControls` stores world-space position and rotation. The camera transform
+is inverted to produce the view matrix, which both GPU line shaders apply in
+`Projection * View * Model * vertex` order. Position and rotation sliders share
+the HW3 control window.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw3-task2
+.\build\Release\nanorender_opengl.exe --preset hw3-task2-camera
+```
+
+Result: moving the camera from X `0` to `-120` moves the wireframe center from
+X `639.4` to `759.4`, confirming the inverse view transformation.
+
+![HW3 Task 2 virtual camera controls](./assets/hw3_task2_camera_controls.png)
+
 ## Build and Run
 
 Requirements:
@@ -189,7 +206,7 @@ documentation, focused commit, and push are complete.
 ### HW3 - Virtual Cameras and Projections
 
 - [x] Task 1: Render GPU debug axes and object bounding boxes
-- [ ] Task 2: Add a virtual camera and view matrix
+- [x] Task 2: Add a virtual camera and view matrix
 - [ ] Task 3: Add orthographic and perspective projection modes
 - [ ] Task 4: Calculate, upload, transform, and visualize mesh normals
 

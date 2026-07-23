@@ -1,5 +1,6 @@
 #pragma once
 
+#include "camera.h"
 #include "mesh.h"
 #include "shader_program.h"
 #include "transform_controls.h"
@@ -24,6 +25,10 @@ public:
     void render(
         const ViewportFit& fit,
         const TransformControls& controls) const;
+    void render(
+        const ViewportFit& fit,
+        const TransformControls& controls,
+        const CameraControls& camera) const;
 
     [[nodiscard]] std::size_t edge_index_count() const;
 

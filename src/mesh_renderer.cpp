@@ -91,6 +91,14 @@ void MeshRenderer::render(
     const ViewportFit& fit,
     const TransformControls& controls) const
 {
+    render(fit, controls, CameraControls {});
+}
+
+void MeshRenderer::render(
+    const ViewportFit& fit,
+    const TransformControls& controls,
+    const CameraControls& camera) const
+{
     const glm::mat4 viewport_fit =
         glm::translate(glm::mat4(1.0F), fit.translation)
         * glm::scale(glm::mat4(1.0F), glm::vec3(fit.uniform_scale));
@@ -117,6 +125,7 @@ void MeshRenderer::render(
     shader_.set_mat4(
         "u_world_transform",
         build_world_transform_matrix(controls));
+    shader_.set_mat4("u_view", build_camera_view_matrix(camera));
     shader_.set_mat4("u_projection", projection);
     glBindVertexArray(vertex_array_);
     glLineWidth(1.0F);

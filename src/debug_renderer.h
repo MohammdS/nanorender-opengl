@@ -1,5 +1,6 @@
 #pragma once
 
+#include "camera.h"
 #include "mesh.h"
 #include "shader_program.h"
 #include "transform_controls.h"
@@ -38,6 +39,11 @@ public:
         const ViewportFit& fit,
         const TransformControls& transforms,
         const DebugVisualControls& controls) const;
+    DebugLineCounts render(
+        const ViewportFit& fit,
+        const TransformControls& transforms,
+        const DebugVisualControls& controls,
+        const CameraControls& camera) const;
 
 private:
     struct Vertex {
@@ -50,6 +56,7 @@ private:
         const glm::mat4& viewport_fit,
         const glm::mat4& local_transform,
         const glm::mat4& world_transform,
+        const glm::mat4& view,
         const glm::mat4& projection) const;
 
     ShaderProgram shader_;

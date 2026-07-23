@@ -46,6 +46,8 @@ add_library(microui_lib STATIC
 target_include_directories(microui_lib PUBLIC ${microui_SOURCE_DIR}/src)
 
 add_executable(nanorender_opengl
+    src/camera.cpp
+    src/camera.h
     src/debug_renderer.cpp
     src/debug_renderer.h
     src/gpu_ui_renderer.cpp
