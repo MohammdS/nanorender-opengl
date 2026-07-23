@@ -127,6 +127,23 @@ keyboard translation moves the GPU wireframe by 6 pixels.
 
 ![HW2 Task 6 keyboard transformation controls](./assets/hw2_task6_keyboard_controls.png)
 
+### HW3 Task 1 - Coordinate Frames and Bounding Boxes
+
+A dynamic GPU line renderer draws colored local axes, fixed world axes, and the
+12 edges of the mesh bounding box. Local axes and the box use the mesh model
+matrices; world axes ignore model transforms. All three helpers have GPU MicroUI
+checkboxes.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw3-task1
+.\build\Release\nanorender_opengl.exe --preset hw3-task1-debug
+```
+
+Result: 3 local axes, 3 world axes, 12 bounding-box edges, 18 total debug
+lines, and 4 rendered faces.
+
+![HW3 Task 1 debug axes and bounding box](./assets/hw3_task1_debug_visuals.png)
+
 ## Build and Run
 
 Requirements:
@@ -171,7 +188,7 @@ documentation, focused commit, and push are complete.
 
 ### HW3 - Virtual Cameras and Projections
 
-- [ ] Task 1: Render GPU debug axes and object bounding boxes
+- [x] Task 1: Render GPU debug axes and object bounding boxes
 - [ ] Task 2: Add a virtual camera and view matrix
 - [ ] Task 3: Add orthographic and perspective projection modes
 - [ ] Task 4: Calculate, upload, transform, and visualize mesh normals

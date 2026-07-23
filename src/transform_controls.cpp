@@ -78,6 +78,13 @@ TransformControls make_world_then_local_preset()
     return controls;
 }
 
+TransformControls make_hw3_task1_debug_preset()
+{
+    TransformControls controls;
+    controls.local_rotation = glm::vec3(25.0F, -25.0F, 0.0F);
+    return controls;
+}
+
 glm::vec3& selected_transform_value(
     TransformControls& controls,
     const KeyboardTransformState& state)

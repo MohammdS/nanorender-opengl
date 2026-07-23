@@ -1,6 +1,7 @@
 #include <glad/gl.h>
 #include <GLFW/glfw3.h>
 
+#include "debug_renderer.h"
 #include "gpu_ui_renderer.h"
 #include "mesh.h"
 #include "mesh_renderer.h"
@@ -36,12 +37,14 @@ enum class ValidationMode {
     hw2_task4,
     hw2_task5,
     hw2_task6,
+    hw3_task1,
 };
 
 enum class StartupPreset {
     none,
     local_then_world,
     world_then_local,
+    hw3_task1_debug,
 };
 
 struct CommandLineOptions {
@@ -84,6 +87,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         if (feature == "hw2-task6") {
             return {.validation = ValidationMode::hw2_task6, .valid = true};
         }
+        if (feature == "hw3-task1") {
+            return {.validation = ValidationMode::hw3_task1, .valid = true};
+        }
     }
 
     if (argc == 3 && std::string_view(argv[1]) == "--preset") {
@@ -100,6 +106,13 @@ CommandLineOptions parse_options(int argc, char* argv[])
                 .validation = ValidationMode::none,
                 .valid = true,
                 .preset = StartupPreset::world_then_local,
+            };
+        }
+        if (preset == "hw3-task1-debug") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::hw3_task1_debug,
             };
         }
     }
@@ -252,7 +265,9 @@ std::filesystem::path find_shader_directory(const char* executable_argument)
         if (std::filesystem::is_regular_file(candidate / "ui.vert")
             && std::filesystem::is_regular_file(candidate / "ui.frag")
             && std::filesystem::is_regular_file(candidate / "wireframe.vert")
-            && std::filesystem::is_regular_file(candidate / "wireframe.frag")) {
+            && std::filesystem::is_regular_file(candidate / "wireframe.frag")
+            && std::filesystem::is_regular_file(candidate / "debug.vert")
+            && std::filesystem::is_regular_file(candidate / "debug.frag")) {
             return candidate;
         }
     }
@@ -485,6 +500,34 @@ void build_transform_controls_window(
         if (mu_button(&context, "Reset Local and World Transforms")) {
             controls = TransformControls {};
         }
+        mu_end_window(&context);
+    }
+}
+
+void build_hw3_debug_window(
+    mu_Context& context,
+    DebugVisualControls& controls,
+    bool& initialized)
+{
+    mu_Container* container = mu_get_container(&context, "HW3 Camera / Debug");
+    if (!initialized) {
+        container->open = 1;
+        initialized = true;
+    }
+
+    if (mu_begin_window(
+            &context,
+            "HW3 Camera / Debug",
+            mu_rect(24, 340, 430, 190))) {
+        int full_width[] {-1};
+        mu_layout_row(&context, 1, full_width, 0);
+        mu_label(&context, "Task 1 GPU debug visuals");
+        mu_checkbox(&context, "Show Local Axes", &controls.show_local_axes);
+        mu_checkbox(&context, "Show World Axes", &controls.show_world_axes);
+        mu_checkbox(
+            &context,
+            "Show Bounding Box",
+            &controls.show_bounding_box);
         mu_end_window(&context);
     }
 }
@@ -818,6 +861,74 @@ bool validate_hw2_task6(
         && glGetError() == GL_NO_ERROR;
 }
 
+std::size_t count_debug_pixels(int width, int height)
+{
+    std::vector<unsigned char> pixels(
+        static_cast<std::size_t>(width)
+            * static_cast<std::size_t>(height) * 3);
+    glReadPixels(
+        0,
+        0,
+        width,
+        height,
+        GL_RGB,
+        GL_UNSIGNED_BYTE,
+        pixels.data());
+
+    std::size_t count = 0;
+    for (std::size_t offset = 0; offset < pixels.size(); offset += 3) {
+        const int red = pixels[offset];
+        const int green = pixels[offset + 1];
+        const int blue = pixels[offset + 2];
+        const bool yellow = red >= 200 && green >= 130 && blue <= 90;
+        const bool red_axis = red >= 130 && green <= 100 && blue <= 100;
+        const bool green_axis = green >= 120 && red <= 100 && blue <= 130;
+        const bool blue_axis = blue >= 130 && red <= 130 && green <= 160;
+        if (yellow || red_axis || green_axis || blue_axis) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool validate_hw3_task1(
+    const MeshRenderer& mesh_renderer,
+    const DebugRenderer& debug_renderer,
+    const ViewportFit& fit)
+{
+    const TransformControls transforms = make_hw3_task1_debug_preset();
+    DebugVisualControls controls;
+    controls.show_local_axes = 1;
+    controls.show_world_axes = 1;
+    controls.show_bounding_box = 1;
+
+    glClear(GL_COLOR_BUFFER_BIT);
+    mesh_renderer.render(fit, transforms);
+    const DebugLineCounts counts = debug_renderer.render(
+        fit,
+        transforms,
+        controls);
+    const std::size_t debug_pixels = count_debug_pixels(
+        fit.viewport_width,
+        fit.viewport_height);
+    const bool expected_counts = counts.local_axes == 3
+        && counts.world_axes == 3 && counts.bounding_box_edges == 12
+        && counts.total() == 18;
+    const std::size_t rendered_faces = mesh_renderer.edge_index_count() / 6;
+    const bool gpu_rendered = debug_pixels >= 100;
+
+    std::cout << "HW3 Task 1 debug visuals: local_axes="
+              << counts.local_axes << " world_axes=" << counts.world_axes
+              << " bounding_box_edges=" << counts.bounding_box_edges
+              << " total_debug_lines=" << counts.total()
+              << " rendered_faces=" << rendered_faces
+              << " debug_pixels=" << debug_pixels
+              << " gpu_rendered=" << (gpu_rendered ? "yes" : "no")
+              << '\n';
+    return expected_counts && rendered_faces == 4 && gpu_rendered
+        && glGetError() == GL_NO_ERROR;
+}
+
 std::string make_window_title(
     const std::filesystem::path& mesh_path,
     const Mesh& mesh,
@@ -871,9 +982,10 @@ int main(int argc, char* argv[])
     if (!options.valid) {
         std::cerr << "Usage: nanorender_opengl "
                      "[--validate foundation|hw2-task1|hw2-task2|"
-                     "hw2-task3|hw2-task4|hw2-task5|hw2-task6] or "
+                     "hw2-task3|hw2-task4|hw2-task5|hw2-task6|"
+                     "hw3-task1] or "
                      "[--preset hw2-task5-local-world|"
-                     "hw2-task5-world-local]\n";
+                     "hw2-task5-world-local|hw3-task1-debug]\n";
         return EXIT_FAILURE;
     }
 
@@ -954,11 +1066,13 @@ int main(int argc, char* argv[])
     std::unique_ptr<mu_Context> ui_context;
     std::unique_ptr<GpuUiRenderer> ui_renderer;
     std::unique_ptr<MeshRenderer> mesh_renderer;
+    std::unique_ptr<DebugRenderer> debug_renderer;
     if (options.validation == ValidationMode::none
         || options.validation == ValidationMode::hw2_task3
         || options.validation == ValidationMode::hw2_task4
         || options.validation == ValidationMode::hw2_task5
-        || options.validation == ValidationMode::hw2_task6) {
+        || options.validation == ValidationMode::hw2_task6
+        || options.validation == ValidationMode::hw3_task1) {
         try {
             mesh_renderer = std::make_unique<MeshRenderer>(
                 mesh,
@@ -966,6 +1080,20 @@ int main(int argc, char* argv[])
         } catch (const std::exception& exception) {
             std::cerr << "GPU mesh initialization failed: "
                       << exception.what() << '\n';
+            glfwDestroyWindow(window);
+            glfwTerminate();
+            return EXIT_FAILURE;
+        }
+    }
+    if (options.validation == ValidationMode::none
+        || options.validation == ValidationMode::hw3_task1) {
+        try {
+            debug_renderer = std::make_unique<DebugRenderer>(
+                find_shader_directory(argv[0]));
+        } catch (const std::exception& exception) {
+            std::cerr << "GPU debug initialization failed: "
+                      << exception.what() << '\n';
+            mesh_renderer.reset();
             glfwDestroyWindow(window);
             glfwTerminate();
             return EXIT_FAILURE;
@@ -991,13 +1119,20 @@ int main(int argc, char* argv[])
     UiInputState ui_input;
     TransformControls transform_controls;
     KeyboardTransformState keyboard_transform_state;
+    DebugVisualControls debug_visuals;
     if (options.preset == StartupPreset::local_then_world) {
         transform_controls = make_local_then_world_preset();
     } else if (options.preset == StartupPreset::world_then_local) {
         transform_controls = make_world_then_local_preset();
+    } else if (options.preset == StartupPreset::hw3_task1_debug) {
+        transform_controls = make_hw3_task1_debug_preset();
+        debug_visuals.show_local_axes = 1;
+        debug_visuals.show_world_axes = 1;
+        debug_visuals.show_bounding_box = 1;
     }
     bool popup_initialized = false;
     bool transform_controls_initialized = false;
+    bool hw3_debug_initialized = false;
     int exit_code = EXIT_SUCCESS;
     while (glfwWindowShouldClose(window) != GLFW_TRUE) {
         process_input(window);
@@ -1059,6 +1194,13 @@ int main(int argc, char* argv[])
                     transform_controls_initialized,
                     options.preset == StartupPreset::none);
             }
+            if (options.validation == ValidationMode::none
+                || options.validation == ValidationMode::hw3_task1) {
+                build_hw3_debug_window(
+                    *ui_context,
+                    debug_visuals,
+                    hw3_debug_initialized);
+            }
             mu_end(ui_context.get());
         }
 
@@ -1071,6 +1213,12 @@ int main(int argc, char* argv[])
 
         if (mesh_renderer != nullptr) {
             mesh_renderer->render(viewport_fit, transform_controls);
+        }
+        if (debug_renderer != nullptr) {
+            debug_renderer->render(
+                viewport_fit,
+                transform_controls,
+                debug_visuals);
         }
 
         if (ui_renderer != nullptr) {
@@ -1113,9 +1261,15 @@ int main(int argc, char* argv[])
             } else if (options.validation == ValidationMode::hw2_task5) {
                 passed = validate_hw2_task5(*mesh_renderer, viewport_fit);
                 validation_name = "HW2 Task 5";
-            } else {
+            } else if (options.validation == ValidationMode::hw2_task6) {
                 passed = validate_hw2_task6(*mesh_renderer, viewport_fit);
                 validation_name = "HW2 Task 6";
+            } else {
+                passed = validate_hw3_task1(
+                    *mesh_renderer,
+                    *debug_renderer,
+                    viewport_fit);
+                validation_name = "HW3 Task 1";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";
@@ -1132,6 +1286,7 @@ int main(int argc, char* argv[])
 
     ui_renderer.reset();
     ui_context.reset();
+    debug_renderer.reset();
     mesh_renderer.reset();
     glfwDestroyWindow(window);
     glfwTerminate();

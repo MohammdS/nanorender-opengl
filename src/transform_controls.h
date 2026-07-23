@@ -37,6 +37,7 @@ glm::mat4 build_world_transform_matrix(const TransformControls& controls);
 
 TransformControls make_local_then_world_preset();
 TransformControls make_world_then_local_preset();
+TransformControls make_hw3_task1_debug_preset();
 
 glm::vec3& selected_transform_value(
     TransformControls& controls,
