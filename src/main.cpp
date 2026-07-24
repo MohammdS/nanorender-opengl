@@ -4,6 +4,8 @@
 #include "debug_renderer.h"
 #include "filled_triangle_renderer.h"
 #include "gpu_ui_renderer.h"
+#include "lighting.h"
+#include "lighting_renderer.h"
 #include "mesh.h"
 #include "mesh_renderer.h"
 #include "transform_controls.h"
@@ -50,6 +52,7 @@ enum class ValidationMode {
     hw4_task1,
     hw4_task2,
     hw4_task3,
+    hw5_task1,
 };
 
 enum class StartupPreset {
@@ -64,6 +67,7 @@ enum class StartupPreset {
     hw4_task2_filled,
     hw4_task3_color,
     hw4_task3_depth,
+    hw5_task1_ambient,
 };
 
 struct CommandLineOptions {
@@ -83,6 +87,10 @@ struct HW4RasterControls {
     int show_barycentric = 0;
     int enable_depth_test = 0;
     int show_depth = 0;
+};
+
+struct HW5LightingControls {
+    int show_ambient_lighting = 0;
 };
 
 CommandLineOptions parse_options(int argc, char* argv[])
@@ -134,6 +142,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         }
         if (feature == "hw4-task3") {
             return {.validation = ValidationMode::hw4_task3, .valid = true};
+        }
+        if (feature == "hw5-task1") {
+            return {.validation = ValidationMode::hw5_task1, .valid = true};
         }
     }
 
@@ -207,6 +218,13 @@ CommandLineOptions parse_options(int argc, char* argv[])
                 .validation = ValidationMode::none,
                 .valid = true,
                 .preset = StartupPreset::hw4_task3_depth,
+            };
+        }
+        if (preset == "hw5-task1-ambient") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::hw5_task1_ambient,
             };
         }
     }
@@ -374,11 +392,12 @@ void build_mesh_info_popup(
     const Mesh& mesh,
     const ViewportFit& fit,
     bool toggle_requested,
-    bool& initialized)
+    bool& initialized,
+    bool initially_open)
 {
     mu_Container* container = mu_get_container(&context, "HW2 Mesh Info");
     if (!initialized) {
-        container->open = 1;
+        container->open = initially_open ? 1 : 0;
         initialized = true;
     }
     if (toggle_requested) {
@@ -720,11 +739,12 @@ void build_hw4_rasterization_window(
     mu_Context& context,
     HW4RasterControls& controls,
     bool& initialized,
-    bool use_evidence_layout)
+    bool use_evidence_layout,
+    bool initially_open)
 {
     mu_Container* container = mu_get_container(&context, "HW4 Rasterization");
     if (!initialized) {
-        container->open = 1;
+        container->open = initially_open ? 1 : 0;
         initialized = true;
     }
 
@@ -762,6 +782,87 @@ void build_hw4_rasterization_window(
             &controls.show_depth);
         mu_label(&context, "Filled triangles take priority over boxes.");
         mu_label(&context, "Turn both render modes off for wireframe.");
+        mu_end_window(&context);
+    }
+}
+
+void build_hw5_lighting_window(
+    mu_Context& context,
+    HW5LightingControls& controls,
+    PointLight& light,
+    Material& material,
+    bool& initialized,
+    bool use_evidence_layout)
+{
+    mu_Container* container =
+        mu_get_container(&context, "HW5 Lighting / Materials");
+    if (!initialized) {
+        container->open = 1;
+        initialized = true;
+    }
+
+    const mu_Rect window_rect = use_evidence_layout
+        ? mu_rect(24, 24, 430, 680)
+        : mu_rect(840, 330, 400, 370);
+    if (mu_begin_window(
+            &context,
+            "HW5 Lighting / Materials",
+            window_rect)) {
+        int full_width[] {-1};
+        mu_layout_row(&context, 1, full_width, 0);
+        mu_label(&context, "Task 1 ambient lighting");
+        mu_checkbox(
+            &context,
+            "Show Ambient Lighting",
+            &controls.show_ambient_lighting);
+
+        mu_label(&context, "Point light");
+        draw_compact_vec3_controls(
+            context,
+            "Position X / Y / Z (-2000 to 2000)",
+            light.position,
+            -2000.0F,
+            2000.0F);
+
+        mu_label(&context, "Light colors (R / G / B)");
+        draw_compact_vec3_controls(
+            context,
+            "Ambient",
+            light.ambient,
+            0.0F,
+            1.0F);
+        draw_compact_vec3_controls(
+            context,
+            "Diffuse",
+            light.diffuse,
+            0.0F,
+            1.0F);
+        draw_compact_vec3_controls(
+            context,
+            "Specular",
+            light.specular,
+            0.0F,
+            1.0F);
+
+        mu_label(&context, "Material colors (R / G / B)");
+        draw_compact_vec3_controls(
+            context,
+            "Ambient",
+            material.ambient,
+            0.0F,
+            1.0F);
+        draw_compact_vec3_controls(
+            context,
+            "Diffuse",
+            material.diffuse,
+            0.0F,
+            1.0F);
+        draw_compact_vec3_controls(
+            context,
+            "Specular",
+            material.specular,
+            0.0F,
+            1.0F);
         mu_end_window(&context);
     }
 }
@@ -1622,6 +1723,74 @@ bool validate_hw4_task3(
         && glGetError() == GL_NO_ERROR;
 }
 
+std::size_t count_matching_color_pixels(
+    const std::vector<unsigned char>& pixels,
+    const glm::vec3& expected_color)
+{
+    const std::array<int, 3> expected {
+        static_cast<int>(std::lround(expected_color.r * 255.0F)),
+        static_cast<int>(std::lround(expected_color.g * 255.0F)),
+        static_cast<int>(std::lround(expected_color.b * 255.0F)),
+    };
+    std::size_t count = 0;
+    for (std::size_t offset = 0; offset < pixels.size(); offset += 3) {
+        if (std::abs(static_cast<int>(pixels[offset]) - expected[0]) <= 2
+            && std::abs(
+                static_cast<int>(pixels[offset + 1]) - expected[1])
+                <= 2
+            && std::abs(
+                static_cast<int>(pixels[offset + 2]) - expected[2])
+                <= 2) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool validate_hw5_task1(
+    const Mesh& mesh,
+    const LightingRenderer& renderer,
+    const ViewportFit& fit)
+{
+    PointLight light;
+    light.ambient = glm::vec3(0.50F, 0.25F, 1.00F);
+    Material material;
+    material.ambient = glm::vec3(0.40F, 0.80F, 0.30F);
+    const glm::vec3 ambient =
+        calculate_ambient_lighting(light, material);
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    const std::size_t triangles = renderer.render_ambient(
+        fit,
+        make_hw4_task1_bounds_preset(),
+        CameraControls {},
+        ProjectionControls {},
+        light,
+        material);
+    const std::vector<unsigned char> pixels = read_rgb_pixels(
+        fit.viewport_width,
+        fit.viewport_height);
+    const ColoredPixelSample sample = analyze_colored_pixels(pixels);
+    const std::size_t ambient_pixels =
+        count_matching_color_pixels(pixels, ambient);
+    const bool expected_ambient =
+        vec3_nearly_equal(ambient, glm::vec3(0.20F, 0.20F, 0.30F));
+    const bool all_faces_submitted = triangles == mesh.faces.size();
+    const bool uniform_gpu_color =
+        sample.pixel_count >= 10000 && sample.color_count == 1
+        && ambient_pixels == sample.pixel_count;
+
+    std::cout << std::fixed << std::setprecision(2)
+              << "HW5 Task 1 ambient: rgb=(" << ambient.r << ", "
+              << ambient.g << ", " << ambient.b << ") triangles="
+              << triangles << " pixels=" << sample.pixel_count
+              << " uniform=" << (uniform_gpu_color ? "yes" : "no")
+              << '\n'
+              << std::defaultfloat;
+    return expected_ambient && all_faces_submitted && uniform_gpu_color
+        && glGetError() == GL_NO_ERROR;
+}
+
 std::string make_window_title(
     const std::filesystem::path& mesh_path,
     const Mesh& mesh,
@@ -1677,13 +1846,13 @@ int main(int argc, char* argv[])
                      "[--validate foundation|hw2-task1|hw2-task2|"
                      "hw2-task3|hw2-task4|hw2-task5|hw2-task6|"
                      "hw3-task1|hw3-task2|hw3-task3|hw3-task4|"
-                     "hw4-task1|hw4-task2|hw4-task3] or "
+                     "hw4-task1|hw4-task2|hw4-task3|hw5-task1] or "
                      "[--preset hw2-task5-local-world|"
                      "hw2-task5-world-local|hw3-task1-debug|"
                      "hw3-task2-camera|hw3-task3-projection|"
                      "hw3-task4-normals|hw4-task1-bounds|"
                      "hw4-task2-filled|hw4-task3-color|"
-                     "hw4-task3-depth]\n";
+                     "hw4-task3-depth|hw5-task1-ambient]\n";
         return EXIT_FAILURE;
     }
 
@@ -1771,6 +1940,7 @@ int main(int argc, char* argv[])
     std::unique_ptr<DebugRenderer> debug_renderer;
     std::unique_ptr<TriangleBoundsRenderer> triangle_bounds_renderer;
     std::unique_ptr<FilledTriangleRenderer> filled_triangle_renderer;
+    std::unique_ptr<LightingRenderer> lighting_renderer;
     if (options.validation == ValidationMode::none
         || options.validation == ValidationMode::hw2_task3
         || options.validation == ValidationMode::hw2_task4
@@ -1843,6 +2013,24 @@ int main(int argc, char* argv[])
             return EXIT_FAILURE;
         }
     }
+    if (options.validation == ValidationMode::none
+        || options.validation == ValidationMode::hw5_task1) {
+        try {
+            lighting_renderer = std::make_unique<LightingRenderer>(
+                mesh,
+                find_shader_directory(argv[0]));
+        } catch (const std::exception& exception) {
+            std::cerr << "GPU lighting initialization failed: "
+                      << exception.what() << '\n';
+            filled_triangle_renderer.reset();
+            triangle_bounds_renderer.reset();
+            debug_renderer.reset();
+            mesh_renderer.reset();
+            glfwDestroyWindow(window);
+            glfwTerminate();
+            return EXIT_FAILURE;
+        }
+    }
     if (options.validation != ValidationMode::foundation) {
         try {
             ui_context = std::make_unique<mu_Context>();
@@ -1867,6 +2055,9 @@ int main(int argc, char* argv[])
     CameraControls camera;
     ProjectionControls projection;
     HW4RasterControls hw4_raster;
+    HW5LightingControls hw5_lighting;
+    PointLight point_light;
+    Material material;
     if (options.preset == StartupPreset::local_then_world) {
         transform_controls = make_local_then_world_preset();
     } else if (options.preset == StartupPreset::world_then_local) {
@@ -1899,6 +2090,9 @@ int main(int argc, char* argv[])
         hw4_raster.enable_depth_test = 1;
         hw4_raster.show_depth =
             options.preset == StartupPreset::hw4_task3_depth ? 1 : 0;
+    } else if (options.preset == StartupPreset::hw5_task1_ambient) {
+        transform_controls = make_hw4_task1_bounds_preset();
+        hw5_lighting.show_ambient_lighting = 1;
     }
     if (options.validation == ValidationMode::hw4_task1) {
         hw4_raster.show_triangle_bounds = 1;
@@ -1909,11 +2103,14 @@ int main(int argc, char* argv[])
         hw4_raster.show_filled_triangles = 1;
         hw4_raster.enable_depth_test = 1;
         hw4_raster.show_depth = 1;
+    } else if (options.validation == ValidationMode::hw5_task1) {
+        hw5_lighting.show_ambient_lighting = 1;
     }
     bool popup_initialized = false;
     bool transform_controls_initialized = false;
     bool hw3_debug_initialized = false;
     bool hw4_raster_initialized = false;
+    bool hw5_lighting_initialized = false;
     int exit_code = EXIT_SUCCESS;
     while (glfwWindowShouldClose(window) != GLFW_TRUE) {
         process_input(window);
@@ -1963,7 +2160,8 @@ int main(int argc, char* argv[])
                 mesh,
                 viewport_fit,
                 toggle_popup,
-                popup_initialized);
+                popup_initialized,
+                options.preset != StartupPreset::hw5_task1_ambient);
             if (options.validation == ValidationMode::none
                 || options.validation == ValidationMode::hw2_task4
                 || options.validation == ValidationMode::hw2_task5
@@ -1992,7 +2190,9 @@ int main(int argc, char* argv[])
                         && options.preset
                             != StartupPreset::hw4_task3_color
                         && options.preset
-                            != StartupPreset::hw4_task3_depth);
+                            != StartupPreset::hw4_task3_depth
+                        && options.preset
+                            != StartupPreset::hw5_task1_ambient);
             }
             if (options.validation == ValidationMode::none
                 || options.validation == ValidationMode::hw4_task1
@@ -2008,7 +2208,18 @@ int main(int argc, char* argv[])
                         || options.preset
                             == StartupPreset::hw4_task3_color
                         || options.preset
-                            == StartupPreset::hw4_task3_depth);
+                            == StartupPreset::hw4_task3_depth,
+                    options.preset != StartupPreset::hw5_task1_ambient);
+            }
+            if (options.validation == ValidationMode::none
+                || options.validation == ValidationMode::hw5_task1) {
+                build_hw5_lighting_window(
+                    *ui_context,
+                    hw5_lighting,
+                    point_light,
+                    material,
+                    hw5_lighting_initialized,
+                    options.preset == StartupPreset::hw5_task1_ambient);
             }
             mu_end(ui_context.get());
         }
@@ -2020,7 +2231,16 @@ int main(int argc, char* argv[])
             clear_color[3]);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        if (hw4_raster.show_filled_triangles != 0
+        if (hw5_lighting.show_ambient_lighting != 0
+            && lighting_renderer != nullptr) {
+            lighting_renderer->render_ambient(
+                viewport_fit,
+                transform_controls,
+                camera,
+                projection,
+                point_light,
+                material);
+        } else if (hw4_raster.show_filled_triangles != 0
             && filled_triangle_renderer != nullptr) {
             filled_triangle_renderer->render(
                 viewport_fit,
@@ -2129,12 +2349,18 @@ int main(int argc, char* argv[])
                     *filled_triangle_renderer,
                     viewport_fit);
                 validation_name = "HW4 Task 2";
-            } else {
+            } else if (options.validation == ValidationMode::hw4_task3) {
                 passed = validate_hw4_task3(
                     mesh,
                     *filled_triangle_renderer,
                     viewport_fit);
                 validation_name = "HW4 Task 3";
+            } else {
+                passed = validate_hw5_task1(
+                    mesh,
+                    *lighting_renderer,
+                    viewport_fit);
+                validation_name = "HW5 Task 1";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";
@@ -2151,6 +2377,7 @@ int main(int argc, char* argv[])
 
     ui_renderer.reset();
     ui_context.reset();
+    lighting_renderer.reset();
     filled_triangle_renderer.reset();
     triangle_bounds_renderer.reset();
     debug_renderer.reset();

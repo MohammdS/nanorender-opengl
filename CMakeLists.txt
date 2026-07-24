@@ -54,6 +54,10 @@ add_executable(nanorender_opengl
     src/filled_triangle_renderer.h
     src/gpu_ui_renderer.cpp
     src/gpu_ui_renderer.h
+    src/lighting.cpp
+    src/lighting.h
+    src/lighting_renderer.cpp
+    src/lighting_renderer.h
     src/mesh.cpp
     src/mesh.h
     src/mesh_renderer.cpp

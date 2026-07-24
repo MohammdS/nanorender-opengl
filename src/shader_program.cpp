@@ -185,3 +185,14 @@ void ShaderProgram::set_vec2(const char* name, float x, float y) const
 {
     glUniform2f(uniform_location(program_id_, name), x, y);
 }
+
+void ShaderProgram::set_vec3(
+    const char* name,
+    const glm::vec3& value) const
+{
+    glUniform3f(
+        uniform_location(program_id_, name),
+        value.x,
+        value.y,
+        value.z);
+}

@@ -243,6 +243,22 @@ views each cover 54834 pixels, and the depth view contains 94 grayscale levels.
 | :---: | :---: |
 | ![HW4 Task 3 depth-tested color buffer](./assets/hw4_task3_depth_test_color.png) | ![HW4 Task 3 depth-buffer visualization](./assets/hw4_task3_depth_buffer.png) |
 
+### HW5 Task 1 - Light, Material, and Ambient Lighting
+
+`PointLight` and `Material` store ambient, diffuse, and specular RGB properties;
+the light also stores its position. The depth-tested fragment shader currently
+renders only `light.ambient * material.ambient`, controlled from the HW5 window.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw5-task1
+.\build\Release\nanorender_opengl.exe --preset hw5-task1-ambient
+```
+
+Result: the known ambient inputs produce RGB `(0.20, 0.20, 0.30)`, and all 4
+triangles render 54834 pixels with one uniform color.
+
+![HW5 Task 1 ambient lighting and controls](./assets/hw5_task1_ambient_lighting.png)
+
 ## Build and Run
 
 Requirements:
@@ -300,7 +316,7 @@ documentation, focused commit, and push are complete.
 
 ### HW5 - Lighting, Materials, and Shading
 
-- [ ] Task 1: Add light/material properties and ambient lighting
+- [x] Task 1: Add light/material properties and ambient lighting
 - [ ] Task 2: Add flat diffuse shading
 - [ ] Task 3: Add specular lighting and reflection-vector debugging
 - [ ] Task 4: Add per-fragment Phong shading
