@@ -32,10 +32,19 @@ public:
         const PointLight& light,
         const Material& material) const;
 
+    std::size_t render_flat_diffuse(
+        const ViewportFit& fit,
+        const TransformControls& transforms,
+        const CameraControls& camera,
+        const ProjectionControls& projection,
+        const PointLight& light,
+        const Material& material) const;
+
     [[nodiscard]] std::size_t triangle_count() const;
 
 private:
-    ShaderProgram shader_;
+    ShaderProgram ambient_shader_;
+    ShaderProgram flat_diffuse_shader_;
     GLuint vertex_array_ = 0;
     GLuint vertex_buffer_ = 0;
     GLsizei vertex_count_ = 0;

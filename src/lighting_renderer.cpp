@@ -29,9 +29,13 @@ std::vector<glm::vec3> build_triangle_vertices(const Mesh& mesh)
 LightingRenderer::LightingRenderer(
     const Mesh& mesh,
     const std::filesystem::path& shader_directory)
-    : shader_(
+    : ambient_shader_(
           shader_directory / "ambient_lighting.vert",
-          shader_directory / "ambient_lighting.frag")
+          shader_directory / "ambient_lighting.frag"),
+      flat_diffuse_shader_(
+          shader_directory / "flat_diffuse_lighting.vert",
+          shader_directory / "flat_diffuse_lighting.geom",
+          shader_directory / "flat_diffuse_lighting.frag")
 {
     const std::vector<glm::vec3> vertices = build_triangle_vertices(mesh);
     if (vertices.empty()) {
@@ -102,20 +106,89 @@ std::size_t LightingRenderer::render_ambient(
     glGetIntegerv(GL_DEPTH_FUNC, &previous_depth_function);
     glGetBooleanv(GL_DEPTH_WRITEMASK, &previous_depth_mask);
 
-    shader_.use();
-    shader_.set_mat4("u_viewport_fit", viewport_fit);
-    shader_.set_mat4(
+    ambient_shader_.use();
+    ambient_shader_.set_mat4("u_viewport_fit", viewport_fit);
+    ambient_shader_.set_mat4(
         "u_local_transform",
         build_local_transform_matrix(transforms, fit));
-    shader_.set_mat4(
+    ambient_shader_.set_mat4(
         "u_world_transform",
         build_world_transform_matrix(transforms));
-    shader_.set_mat4("u_view", build_camera_view_matrix(camera));
-    shader_.set_mat4(
+    ambient_shader_.set_mat4(
+        "u_view",
+        build_camera_view_matrix(camera));
+    ambient_shader_.set_mat4(
         "u_projection",
         build_projection_matrix(fit, projection_controls));
-    shader_.set_vec3("u_light_ambient", light.ambient);
-    shader_.set_vec3("u_material_ambient", material.ambient);
+    ambient_shader_.set_vec3("u_light_ambient", light.ambient);
+    ambient_shader_.set_vec3("u_material_ambient", material.ambient);
+
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);
+    glBindVertexArray(vertex_array_);
+    glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
+
+    glDepthFunc(static_cast<GLenum>(previous_depth_function));
+    glDepthMask(previous_depth_mask);
+    if (depth_test_was_enabled == GL_TRUE) {
+        glEnable(GL_DEPTH_TEST);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
+    glBindVertexArray(static_cast<GLuint>(previous_vertex_array));
+    glUseProgram(static_cast<GLuint>(previous_program));
+    return triangle_count();
+}
+
+std::size_t LightingRenderer::render_flat_diffuse(
+    const ViewportFit& fit,
+    const TransformControls& transforms,
+    const CameraControls& camera,
+    const ProjectionControls& projection_controls,
+    const PointLight& light,
+    const Material& material) const
+{
+    const glm::mat4 viewport_fit =
+        glm::translate(glm::mat4(1.0F), fit.translation)
+        * glm::scale(glm::mat4(1.0F), glm::vec3(fit.uniform_scale));
+    const glm::mat4 view = build_camera_view_matrix(camera);
+    const glm::vec3 light_position_view =
+        glm::vec3(view * glm::vec4(light.position, 1.0F));
+
+    GLint previous_program = 0;
+    GLint previous_vertex_array = 0;
+    GLint previous_depth_function = GL_LESS;
+    GLboolean previous_depth_mask = GL_TRUE;
+    const GLboolean depth_test_was_enabled = glIsEnabled(GL_DEPTH_TEST);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previous_vertex_array);
+    glGetIntegerv(GL_DEPTH_FUNC, &previous_depth_function);
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &previous_depth_mask);
+
+    flat_diffuse_shader_.use();
+    flat_diffuse_shader_.set_mat4("u_viewport_fit", viewport_fit);
+    flat_diffuse_shader_.set_mat4(
+        "u_local_transform",
+        build_local_transform_matrix(transforms, fit));
+    flat_diffuse_shader_.set_mat4(
+        "u_world_transform",
+        build_world_transform_matrix(transforms));
+    flat_diffuse_shader_.set_mat4("u_view", view);
+    flat_diffuse_shader_.set_mat4(
+        "u_projection",
+        build_projection_matrix(fit, projection_controls));
+    flat_diffuse_shader_.set_vec3(
+        "u_light_position_view",
+        light_position_view);
+    flat_diffuse_shader_.set_vec3("u_light_ambient", light.ambient);
+    flat_diffuse_shader_.set_vec3("u_light_diffuse", light.diffuse);
+    flat_diffuse_shader_.set_vec3(
+        "u_material_ambient",
+        material.ambient);
+    flat_diffuse_shader_.set_vec3(
+        "u_material_diffuse",
+        material.diffuse);
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);

@@ -18,3 +18,10 @@ struct Material {
 glm::vec3 calculate_ambient_lighting(
     const PointLight& light,
     const Material& material);
+
+glm::vec3 calculate_flat_diffuse_lighting(
+    const PointLight& light,
+    const Material& material,
+    const glm::vec3& surface_position,
+    const glm::vec3& surface_normal,
+    float* diffuse_factor = nullptr);

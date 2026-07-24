@@ -53,6 +53,7 @@ enum class ValidationMode {
     hw4_task2,
     hw4_task3,
     hw5_task1,
+    hw5_task2,
 };
 
 enum class StartupPreset {
@@ -68,6 +69,7 @@ enum class StartupPreset {
     hw4_task3_color,
     hw4_task3_depth,
     hw5_task1_ambient,
+    hw5_task2_flat_diffuse,
 };
 
 struct CommandLineOptions {
@@ -91,6 +93,7 @@ struct HW4RasterControls {
 
 struct HW5LightingControls {
     int show_ambient_lighting = 0;
+    int show_flat_diffuse = 0;
 };
 
 CommandLineOptions parse_options(int argc, char* argv[])
@@ -145,6 +148,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         }
         if (feature == "hw5-task1") {
             return {.validation = ValidationMode::hw5_task1, .valid = true};
+        }
+        if (feature == "hw5-task2") {
+            return {.validation = ValidationMode::hw5_task2, .valid = true};
         }
     }
 
@@ -225,6 +231,13 @@ CommandLineOptions parse_options(int argc, char* argv[])
                 .validation = ValidationMode::none,
                 .valid = true,
                 .preset = StartupPreset::hw5_task1_ambient,
+            };
+        }
+        if (preset == "hw5-task2-flat-diffuse") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::hw5_task2_flat_diffuse,
             };
         }
     }
@@ -810,11 +823,23 @@ void build_hw5_lighting_window(
             window_rect)) {
         int full_width[] {-1};
         mu_layout_row(&context, 1, full_width, 0);
-        mu_label(&context, "Task 1 ambient lighting");
-        mu_checkbox(
+        mu_label(&context, "Render modes");
+        const int ambient_result = mu_checkbox(
             &context,
             "Show Ambient Lighting",
             &controls.show_ambient_lighting);
+        if ((ambient_result & MU_RES_CHANGE) != 0
+            && controls.show_ambient_lighting != 0) {
+            controls.show_flat_diffuse = 0;
+        }
+        const int diffuse_result = mu_checkbox(
+            &context,
+            "Show Flat Diffuse Shading",
+            &controls.show_flat_diffuse);
+        if ((diffuse_result & MU_RES_CHANGE) != 0
+            && controls.show_flat_diffuse != 0) {
+            controls.show_ambient_lighting = 0;
+        }
 
         mu_label(&context, "Point light");
         draw_compact_vec3_controls(
@@ -1791,6 +1816,62 @@ bool validate_hw5_task1(
         && glGetError() == GL_NO_ERROR;
 }
 
+bool validate_hw5_task2(
+    const Mesh& mesh,
+    const LightingRenderer& renderer,
+    const ViewportFit& fit)
+{
+    PointLight test_light;
+    test_light.position = glm::vec3(0.0F, 0.0F, 10.0F);
+    test_light.ambient = glm::vec3(0.2F);
+    test_light.diffuse = glm::vec3(0.8F);
+    Material test_material;
+    test_material.ambient = glm::vec3(0.5F);
+    test_material.diffuse = glm::vec3(0.5F);
+    float test_diffuse = 0.0F;
+    const glm::vec3 test_color = calculate_flat_diffuse_lighting(
+        test_light,
+        test_material,
+        glm::vec3(0.0F),
+        glm::vec3(0.0F, 0.0F, 1.0F),
+        &test_diffuse);
+
+    PointLight render_light;
+    render_light.position = glm::vec3(400.0F, 450.0F, 800.0F);
+    render_light.ambient = glm::vec3(0.18F);
+    render_light.diffuse = glm::vec3(0.85F);
+    Material render_material;
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    const std::size_t triangles = renderer.render_flat_diffuse(
+        fit,
+        make_hw4_task1_bounds_preset(),
+        CameraControls {},
+        ProjectionControls {},
+        render_light,
+        render_material);
+    const ColoredPixelSample sample = analyze_colored_pixels(
+        read_rgb_pixels(fit.viewport_width, fit.viewport_height));
+
+    const bool known_lambert_result =
+        vec3_nearly_equal(test_color, glm::vec3(0.5F))
+        && nearly_equal(test_diffuse, 1.0F);
+    const bool all_faces_submitted = triangles == mesh.faces.size();
+    const bool flat_face_variation =
+        sample.pixel_count >= 10000 && sample.color_count >= 2
+        && sample.color_count <= mesh.faces.size();
+
+    std::cout << std::fixed << std::setprecision(2)
+              << "HW5 Task 2 flat diffuse: test_rgb=("
+              << test_color.r << ", " << test_color.g << ", "
+              << test_color.b << ") lambert=" << test_diffuse
+              << " triangles=" << triangles
+              << " pixels=" << sample.pixel_count
+              << " face_colors=" << sample.color_count << '\n'
+              << std::defaultfloat;
+    return known_lambert_result && all_faces_submitted
+        && flat_face_variation && glGetError() == GL_NO_ERROR;
+}
+
 std::string make_window_title(
     const std::filesystem::path& mesh_path,
     const Mesh& mesh,
@@ -1846,13 +1927,15 @@ int main(int argc, char* argv[])
                      "[--validate foundation|hw2-task1|hw2-task2|"
                      "hw2-task3|hw2-task4|hw2-task5|hw2-task6|"
                      "hw3-task1|hw3-task2|hw3-task3|hw3-task4|"
-                     "hw4-task1|hw4-task2|hw4-task3|hw5-task1] or "
+                     "hw4-task1|hw4-task2|hw4-task3|hw5-task1|"
+                     "hw5-task2] or "
                      "[--preset hw2-task5-local-world|"
                      "hw2-task5-world-local|hw3-task1-debug|"
                      "hw3-task2-camera|hw3-task3-projection|"
                      "hw3-task4-normals|hw4-task1-bounds|"
                      "hw4-task2-filled|hw4-task3-color|"
-                     "hw4-task3-depth|hw5-task1-ambient]\n";
+                     "hw4-task3-depth|hw5-task1-ambient|"
+                     "hw5-task2-flat-diffuse]\n";
         return EXIT_FAILURE;
     }
 
@@ -2014,7 +2097,8 @@ int main(int argc, char* argv[])
         }
     }
     if (options.validation == ValidationMode::none
-        || options.validation == ValidationMode::hw5_task1) {
+        || options.validation == ValidationMode::hw5_task1
+        || options.validation == ValidationMode::hw5_task2) {
         try {
             lighting_renderer = std::make_unique<LightingRenderer>(
                 mesh,
@@ -2093,6 +2177,14 @@ int main(int argc, char* argv[])
     } else if (options.preset == StartupPreset::hw5_task1_ambient) {
         transform_controls = make_hw4_task1_bounds_preset();
         hw5_lighting.show_ambient_lighting = 1;
+    } else if (
+        options.preset == StartupPreset::hw5_task2_flat_diffuse) {
+        transform_controls.local_rotation =
+            glm::vec3(25.0F, -35.0F, 0.0F);
+        point_light.position = glm::vec3(400.0F, 450.0F, 800.0F);
+        point_light.ambient = glm::vec3(0.18F);
+        point_light.diffuse = glm::vec3(0.85F);
+        hw5_lighting.show_flat_diffuse = 1;
     }
     if (options.validation == ValidationMode::hw4_task1) {
         hw4_raster.show_triangle_bounds = 1;
@@ -2105,6 +2197,8 @@ int main(int argc, char* argv[])
         hw4_raster.show_depth = 1;
     } else if (options.validation == ValidationMode::hw5_task1) {
         hw5_lighting.show_ambient_lighting = 1;
+    } else if (options.validation == ValidationMode::hw5_task2) {
+        hw5_lighting.show_flat_diffuse = 1;
     }
     bool popup_initialized = false;
     bool transform_controls_initialized = false;
@@ -2161,7 +2255,9 @@ int main(int argc, char* argv[])
                 viewport_fit,
                 toggle_popup,
                 popup_initialized,
-                options.preset != StartupPreset::hw5_task1_ambient);
+                options.preset != StartupPreset::hw5_task1_ambient
+                    && options.preset
+                        != StartupPreset::hw5_task2_flat_diffuse);
             if (options.validation == ValidationMode::none
                 || options.validation == ValidationMode::hw2_task4
                 || options.validation == ValidationMode::hw2_task5
@@ -2192,7 +2288,9 @@ int main(int argc, char* argv[])
                         && options.preset
                             != StartupPreset::hw4_task3_depth
                         && options.preset
-                            != StartupPreset::hw5_task1_ambient);
+                            != StartupPreset::hw5_task1_ambient
+                        && options.preset
+                            != StartupPreset::hw5_task2_flat_diffuse);
             }
             if (options.validation == ValidationMode::none
                 || options.validation == ValidationMode::hw4_task1
@@ -2209,17 +2307,22 @@ int main(int argc, char* argv[])
                             == StartupPreset::hw4_task3_color
                         || options.preset
                             == StartupPreset::hw4_task3_depth,
-                    options.preset != StartupPreset::hw5_task1_ambient);
+                    options.preset != StartupPreset::hw5_task1_ambient
+                        && options.preset
+                            != StartupPreset::hw5_task2_flat_diffuse);
             }
             if (options.validation == ValidationMode::none
-                || options.validation == ValidationMode::hw5_task1) {
+                || options.validation == ValidationMode::hw5_task1
+                || options.validation == ValidationMode::hw5_task2) {
                 build_hw5_lighting_window(
                     *ui_context,
                     hw5_lighting,
                     point_light,
                     material,
                     hw5_lighting_initialized,
-                    options.preset == StartupPreset::hw5_task1_ambient);
+                    options.preset == StartupPreset::hw5_task1_ambient
+                        || options.preset
+                            == StartupPreset::hw5_task2_flat_diffuse);
             }
             mu_end(ui_context.get());
         }
@@ -2231,7 +2334,16 @@ int main(int argc, char* argv[])
             clear_color[3]);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        if (hw5_lighting.show_ambient_lighting != 0
+        if (hw5_lighting.show_flat_diffuse != 0
+            && lighting_renderer != nullptr) {
+            lighting_renderer->render_flat_diffuse(
+                viewport_fit,
+                transform_controls,
+                camera,
+                projection,
+                point_light,
+                material);
+        } else if (hw5_lighting.show_ambient_lighting != 0
             && lighting_renderer != nullptr) {
             lighting_renderer->render_ambient(
                 viewport_fit,
@@ -2355,12 +2467,18 @@ int main(int argc, char* argv[])
                     *filled_triangle_renderer,
                     viewport_fit);
                 validation_name = "HW4 Task 3";
-            } else {
+            } else if (options.validation == ValidationMode::hw5_task1) {
                 passed = validate_hw5_task1(
                     mesh,
                     *lighting_renderer,
                     viewport_fit);
                 validation_name = "HW5 Task 1";
+            } else {
+                passed = validate_hw5_task2(
+                    mesh,
+                    *lighting_renderer,
+                    viewport_fit);
+                validation_name = "HW5 Task 2";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";

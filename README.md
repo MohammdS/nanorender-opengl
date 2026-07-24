@@ -259,6 +259,23 @@ triangles render 54834 pixels with one uniform color.
 
 ![HW5 Task 1 ambient lighting and controls](./assets/hw5_task1_ambient_lighting.png)
 
+### HW5 Task 2 - Flat Diffuse Shading
+
+The geometry shader calculates each triangle's center and face normal once,
+then applies `ambient + diffuse * max(dot(N, L), 0)`. Its flat output gives
+every pixel on one face the same color while different face angles shade
+differently.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw5-task2
+.\build\Release\nanorender_opengl.exe --preset hw5-task2-flat-diffuse
+```
+
+Result: the known Lambert test produces RGB `(0.50, 0.50, 0.50)` with factor
+`1.00`; all 4 triangles render 54834 pixels using 2 visible face colors.
+
+![HW5 Task 2 flat diffuse shading](./assets/hw5_task2_flat_diffuse_shading.jpg)
+
 ## Build and Run
 
 Requirements:
@@ -317,7 +334,7 @@ documentation, focused commit, and push are complete.
 ### HW5 - Lighting, Materials, and Shading
 
 - [x] Task 1: Add light/material properties and ambient lighting
-- [ ] Task 2: Add flat diffuse shading
+- [x] Task 2: Add flat diffuse shading
 - [ ] Task 3: Add specular lighting and reflection-vector debugging
 - [ ] Task 4: Add per-fragment Phong shading
 
