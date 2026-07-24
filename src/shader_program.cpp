@@ -162,6 +162,11 @@ void ShaderProgram::use() const
     glUseProgram(program_id_);
 }
 
+void ShaderProgram::set_float(const char* name, float value) const
+{
+    glUniform1f(uniform_location(program_id_, name), value);
+}
+
 void ShaderProgram::set_int(const char* name, int value) const
 {
     glUniform1i(uniform_location(program_id_, name), value);

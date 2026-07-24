@@ -49,6 +49,7 @@ enum class ValidationMode {
     hw3_task4,
     hw4_task1,
     hw4_task2,
+    hw4_task3,
 };
 
 enum class StartupPreset {
@@ -61,6 +62,8 @@ enum class StartupPreset {
     hw3_task4_normals,
     hw4_task1_bounds,
     hw4_task2_filled,
+    hw4_task3_color,
+    hw4_task3_depth,
 };
 
 struct CommandLineOptions {
@@ -78,6 +81,8 @@ struct HW4RasterControls {
     int show_triangle_bounds = 0;
     int show_filled_triangles = 0;
     int show_barycentric = 0;
+    int enable_depth_test = 0;
+    int show_depth = 0;
 };
 
 CommandLineOptions parse_options(int argc, char* argv[])
@@ -126,6 +131,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         }
         if (feature == "hw4-task2") {
             return {.validation = ValidationMode::hw4_task2, .valid = true};
+        }
+        if (feature == "hw4-task3") {
+            return {.validation = ValidationMode::hw4_task3, .valid = true};
         }
     }
 
@@ -185,6 +193,20 @@ CommandLineOptions parse_options(int argc, char* argv[])
                 .validation = ValidationMode::none,
                 .valid = true,
                 .preset = StartupPreset::hw4_task2_filled,
+            };
+        }
+        if (preset == "hw4-task3-color") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::hw4_task3_color,
+            };
+        }
+        if (preset == "hw4-task3-depth") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::hw4_task3_depth,
             };
         }
     }
@@ -707,8 +729,8 @@ void build_hw4_rasterization_window(
     }
 
     const mu_Rect window_rect = use_evidence_layout
-        ? mu_rect(24, 330, 430, 220)
-        : mu_rect(840, 24, 400, 220);
+        ? mu_rect(24, 330, 430, 300)
+        : mu_rect(840, 24, 400, 300);
     if (mu_begin_window(
             &context,
             "HW4 Rasterization",
@@ -729,6 +751,15 @@ void build_hw4_rasterization_window(
             &context,
             "Visualize Barycentric Weights",
             &controls.show_barycentric);
+        mu_label(&context, "Task 3 hardware depth buffer");
+        mu_checkbox(
+            &context,
+            "Enable Depth Testing",
+            &controls.enable_depth_test);
+        mu_checkbox(
+            &context,
+            "Show Depth Buffer",
+            &controls.show_depth);
         mu_label(&context, "Filled triangles take priority over boxes.");
         mu_label(&context, "Turn both render modes off for wireframe.");
         mu_end_window(&context);
@@ -1331,7 +1362,7 @@ struct ColoredPixelSample {
     std::size_t color_count = 0;
 };
 
-ColoredPixelSample read_colored_pixel_sample(int width, int height)
+std::vector<unsigned char> read_rgb_pixels(int width, int height)
 {
     std::vector<unsigned char> pixels(
         static_cast<std::size_t>(width)
@@ -1344,7 +1375,12 @@ ColoredPixelSample read_colored_pixel_sample(int width, int height)
         GL_RGB,
         GL_UNSIGNED_BYTE,
         pixels.data());
+    return pixels;
+}
 
+ColoredPixelSample analyze_colored_pixels(
+    const std::vector<unsigned char>& pixels)
+{
     std::unordered_set<std::uint32_t> colors;
     ColoredPixelSample sample;
     const std::array<int, 3> background {
@@ -1371,6 +1407,11 @@ ColoredPixelSample read_colored_pixel_sample(int width, int height)
     }
     sample.color_count = colors.size();
     return sample;
+}
+
+ColoredPixelSample read_colored_pixel_sample(int width, int height)
+{
+    return analyze_colored_pixels(read_rgb_pixels(width, height));
 }
 
 bool validate_hw4_task1(
@@ -1412,6 +1453,8 @@ bool validate_hw4_task2(
         transforms,
         CameraControls {},
         ProjectionControls {},
+        false,
+        false,
         false);
     const ColoredPixelSample solid_sample = read_colored_pixel_sample(
         fit.viewport_width,
@@ -1423,7 +1466,9 @@ bool validate_hw4_task2(
         transforms,
         CameraControls {},
         ProjectionControls {},
-        true);
+        true,
+        false,
+        false);
     const ColoredPixelSample barycentric_sample =
         read_colored_pixel_sample(
             fit.viewport_width,
@@ -1446,6 +1491,135 @@ bool validate_hw4_task2(
               << " faces=" << mesh.faces.size() << '\n';
     return all_faces_submitted && solid_fill_rendered
         && barycentric_interpolated && glGetError() == GL_NO_ERROR;
+}
+
+std::size_t count_changed_pixels(
+    const std::vector<unsigned char>& first,
+    const std::vector<unsigned char>& second)
+{
+    if (first.size() != second.size()) {
+        return 0;
+    }
+
+    std::size_t count = 0;
+    for (std::size_t offset = 0; offset < first.size(); offset += 3) {
+        const bool changed =
+            std::abs(
+                static_cast<int>(first[offset])
+                - static_cast<int>(second[offset]))
+                > 2
+            || std::abs(
+                static_cast<int>(first[offset + 1])
+                - static_cast<int>(second[offset + 1]))
+                > 2
+            || std::abs(
+                static_cast<int>(first[offset + 2])
+                - static_cast<int>(second[offset + 2]))
+                > 2;
+        if (changed) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+std::size_t count_grayscale_pixels(
+    const std::vector<unsigned char>& pixels)
+{
+    std::size_t count = 0;
+    for (std::size_t offset = 0; offset < pixels.size(); offset += 3) {
+        const int red = pixels[offset];
+        const int green = pixels[offset + 1];
+        const int blue = pixels[offset + 2];
+        if (std::abs(red - green) <= 1
+            && std::abs(green - blue) <= 1) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+bool validate_hw4_task3(
+    const Mesh& mesh,
+    const FilledTriangleRenderer& renderer,
+    const ViewportFit& fit)
+{
+    const TransformControls transforms = make_hw4_task1_bounds_preset();
+    const CameraControls camera;
+    const ProjectionControls projection;
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    const std::size_t triangles = renderer.render(
+        fit,
+        transforms,
+        camera,
+        projection,
+        false,
+        false,
+        false);
+    const std::vector<unsigned char> painter_pixels = read_rgb_pixels(
+        fit.viewport_width,
+        fit.viewport_height);
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    renderer.render(
+        fit,
+        transforms,
+        camera,
+        projection,
+        false,
+        true,
+        false);
+    const std::vector<unsigned char> depth_color_pixels = read_rgb_pixels(
+        fit.viewport_width,
+        fit.viewport_height);
+    const ColoredPixelSample color_sample =
+        analyze_colored_pixels(depth_color_pixels);
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    renderer.render(
+        fit,
+        transforms,
+        camera,
+        projection,
+        false,
+        true,
+        true);
+    const std::vector<unsigned char> depth_map_pixels = read_rgb_pixels(
+        fit.viewport_width,
+        fit.viewport_height);
+    const ColoredPixelSample depth_sample =
+        analyze_colored_pixels(depth_map_pixels);
+
+    const std::size_t resolved_pixels =
+        count_changed_pixels(painter_pixels, depth_color_pixels);
+    const std::size_t grayscale_pixels =
+        count_grayscale_pixels(depth_map_pixels);
+    GLint depth_bits = 0;
+    glGetFramebufferAttachmentParameteriv(
+        GL_FRAMEBUFFER,
+        GL_DEPTH,
+        GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE,
+        &depth_bits);
+    const bool all_faces_submitted = triangles == mesh.faces.size();
+    const bool hardware_depth_available = depth_bits >= 16;
+    const bool depth_test_resolved_visibility =
+        color_sample.pixel_count >= 10000 && resolved_pixels >= 100;
+    const bool depth_visualized =
+        depth_sample.pixel_count == color_sample.pixel_count
+        && depth_sample.color_count >= 8
+        && grayscale_pixels == depth_sample.pixel_count;
+
+    std::cout << "HW4 Task 3 depth buffer: triangles=" << triangles
+              << " color_pixels=" << color_sample.pixel_count
+              << " depth_pixels=" << depth_sample.pixel_count
+              << " depth_colors=" << depth_sample.color_count
+              << " resolved_pixels=" << resolved_pixels
+              << " depth_bits=" << depth_bits
+              << " faces=" << mesh.faces.size() << '\n';
+    return all_faces_submitted && hardware_depth_available
+        && depth_test_resolved_visibility && depth_visualized
+        && glGetError() == GL_NO_ERROR;
 }
 
 std::string make_window_title(
@@ -1503,12 +1677,13 @@ int main(int argc, char* argv[])
                      "[--validate foundation|hw2-task1|hw2-task2|"
                      "hw2-task3|hw2-task4|hw2-task5|hw2-task6|"
                      "hw3-task1|hw3-task2|hw3-task3|hw3-task4|"
-                     "hw4-task1|hw4-task2] or "
+                     "hw4-task1|hw4-task2|hw4-task3] or "
                      "[--preset hw2-task5-local-world|"
                      "hw2-task5-world-local|hw3-task1-debug|"
                      "hw3-task2-camera|hw3-task3-projection|"
                      "hw3-task4-normals|hw4-task1-bounds|"
-                     "hw4-task2-filled]\n";
+                     "hw4-task2-filled|hw4-task3-color|"
+                     "hw4-task3-depth]\n";
         return EXIT_FAILURE;
     }
 
@@ -1522,6 +1697,7 @@ int main(int argc, char* argv[])
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    glfwWindowHint(GLFW_DEPTH_BITS, 24);
     glfwWindowHint(
         GLFW_VISIBLE,
         options.validation == ValidationMode::none ? GLFW_TRUE : GLFW_FALSE);
@@ -1556,6 +1732,7 @@ int main(int argc, char* argv[])
     int framebuffer_height = 0;
     glfwGetFramebufferSize(window, &framebuffer_width, &framebuffer_height);
     glViewport(0, 0, framebuffer_width, framebuffer_height);
+    glClearDepth(1.0);
 
     std::cout << "OpenGL " << GLAD_VERSION_MAJOR(loaded_version) << '.'
               << GLAD_VERSION_MINOR(loaded_version) << " initialized.\n";
@@ -1648,7 +1825,8 @@ int main(int argc, char* argv[])
         }
     }
     if (options.validation == ValidationMode::none
-        || options.validation == ValidationMode::hw4_task2) {
+        || options.validation == ValidationMode::hw4_task2
+        || options.validation == ValidationMode::hw4_task3) {
         try {
             filled_triangle_renderer =
                 std::make_unique<FilledTriangleRenderer>(
@@ -1714,12 +1892,23 @@ int main(int argc, char* argv[])
         transform_controls = make_hw4_task1_bounds_preset();
         hw4_raster.show_filled_triangles = 1;
         hw4_raster.show_barycentric = 1;
+    } else if (options.preset == StartupPreset::hw4_task3_color
+               || options.preset == StartupPreset::hw4_task3_depth) {
+        transform_controls = make_hw4_task1_bounds_preset();
+        hw4_raster.show_filled_triangles = 1;
+        hw4_raster.enable_depth_test = 1;
+        hw4_raster.show_depth =
+            options.preset == StartupPreset::hw4_task3_depth ? 1 : 0;
     }
     if (options.validation == ValidationMode::hw4_task1) {
         hw4_raster.show_triangle_bounds = 1;
     } else if (options.validation == ValidationMode::hw4_task2) {
         hw4_raster.show_filled_triangles = 1;
         hw4_raster.show_barycentric = 1;
+    } else if (options.validation == ValidationMode::hw4_task3) {
+        hw4_raster.show_filled_triangles = 1;
+        hw4_raster.enable_depth_test = 1;
+        hw4_raster.show_depth = 1;
     }
     bool popup_initialized = false;
     bool transform_controls_initialized = false;
@@ -1799,18 +1988,27 @@ int main(int argc, char* argv[])
                     hw3_debug_initialized,
                     options.preset != StartupPreset::hw4_task1_bounds
                         && options.preset
-                            != StartupPreset::hw4_task2_filled);
+                            != StartupPreset::hw4_task2_filled
+                        && options.preset
+                            != StartupPreset::hw4_task3_color
+                        && options.preset
+                            != StartupPreset::hw4_task3_depth);
             }
             if (options.validation == ValidationMode::none
                 || options.validation == ValidationMode::hw4_task1
-                || options.validation == ValidationMode::hw4_task2) {
+                || options.validation == ValidationMode::hw4_task2
+                || options.validation == ValidationMode::hw4_task3) {
                 build_hw4_rasterization_window(
                     *ui_context,
                     hw4_raster,
                     hw4_raster_initialized,
                     options.preset == StartupPreset::hw4_task1_bounds
                         || options.preset
-                            == StartupPreset::hw4_task2_filled);
+                            == StartupPreset::hw4_task2_filled
+                        || options.preset
+                            == StartupPreset::hw4_task3_color
+                        || options.preset
+                            == StartupPreset::hw4_task3_depth);
             }
             mu_end(ui_context.get());
         }
@@ -1820,7 +2018,7 @@ int main(int argc, char* argv[])
             clear_color[1],
             clear_color[2],
             clear_color[3]);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         if (hw4_raster.show_filled_triangles != 0
             && filled_triangle_renderer != nullptr) {
@@ -1829,7 +2027,9 @@ int main(int argc, char* argv[])
                 transform_controls,
                 camera,
                 projection,
-                hw4_raster.show_barycentric != 0);
+                hw4_raster.show_barycentric != 0,
+                hw4_raster.enable_depth_test != 0,
+                hw4_raster.show_depth != 0);
         } else if (hw4_raster.show_triangle_bounds != 0
             && triangle_bounds_renderer != nullptr) {
             triangle_bounds_renderer->render(
@@ -1923,12 +2123,18 @@ int main(int argc, char* argv[])
                     *triangle_bounds_renderer,
                     viewport_fit);
                 validation_name = "HW4 Task 1";
-            } else {
+            } else if (options.validation == ValidationMode::hw4_task2) {
                 passed = validate_hw4_task2(
                     mesh,
                     *filled_triangle_renderer,
                     viewport_fit);
                 validation_name = "HW4 Task 2";
+            } else {
+                passed = validate_hw4_task3(
+                    mesh,
+                    *filled_triangle_renderer,
+                    viewport_fit);
+                validation_name = "HW4 Task 3";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";

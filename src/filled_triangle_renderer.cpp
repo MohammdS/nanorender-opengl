@@ -2,6 +2,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -136,7 +137,9 @@ std::size_t FilledTriangleRenderer::render(
     const TransformControls& transforms,
     const CameraControls& camera,
     const ProjectionControls& projection_controls,
-    bool show_barycentric) const
+    bool show_barycentric,
+    bool enable_depth_test,
+    bool show_depth) const
 {
     const glm::mat4 viewport_fit =
         glm::translate(glm::mat4(1.0F), fit.translation)
@@ -144,8 +147,13 @@ std::size_t FilledTriangleRenderer::render(
 
     GLint previous_program = 0;
     GLint previous_vertex_array = 0;
+    GLint previous_depth_function = GL_LESS;
+    GLboolean previous_depth_mask = GL_TRUE;
+    const GLboolean depth_test_was_enabled = glIsEnabled(GL_DEPTH_TEST);
     glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previous_vertex_array);
+    glGetIntegerv(GL_DEPTH_FUNC, &previous_depth_function);
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &previous_depth_mask);
 
     shader_.use();
     shader_.set_mat4("u_viewport_fit", viewport_fit);
@@ -160,9 +168,32 @@ std::size_t FilledTriangleRenderer::render(
         "u_projection",
         build_projection_matrix(fit, projection_controls));
     shader_.set_int("u_show_barycentric", show_barycentric ? 1 : 0);
+    shader_.set_int("u_show_depth", show_depth ? 1 : 0);
+    const float near_plane = std::max(
+        projection_controls.near_plane,
+        0.01F);
+    const float far_plane = std::max(
+        projection_controls.far_plane,
+        near_plane + 1.0F);
+    shader_.set_float("u_near_plane", near_plane);
+    shader_.set_float("u_far_plane", far_plane);
+    if (enable_depth_test) {
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glDepthMask(GL_TRUE);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
     glBindVertexArray(vertex_array_);
     glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
 
+    glDepthFunc(static_cast<GLenum>(previous_depth_function));
+    glDepthMask(previous_depth_mask);
+    if (depth_test_was_enabled == GL_TRUE) {
+        glEnable(GL_DEPTH_TEST);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
     glBindVertexArray(static_cast<GLuint>(previous_vertex_array));
     glUseProgram(static_cast<GLuint>(previous_program));
     return triangle_count();

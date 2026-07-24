@@ -28,7 +28,9 @@ public:
         const TransformControls& transforms,
         const CameraControls& camera,
         const ProjectionControls& projection,
-        bool show_barycentric) const;
+        bool show_barycentric,
+        bool enable_depth_test,
+        bool show_depth) const;
 
     [[nodiscard]] std::size_t triangle_count() const;
 

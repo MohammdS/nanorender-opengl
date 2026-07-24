@@ -224,6 +224,25 @@ and produces 40835 interpolated colors.
 
 ![HW4 Task 2 barycentric triangle filling](./assets/hw4_task2_barycentric_triangles.png)
 
+### HW4 Task 3 - Hardware Depth Buffer
+
+The filled-triangle path now clears and writes the 24-bit OpenGL depth buffer
+with `GL_LESS`. A second toggle maps the GPU-interpolated view depth to
+grayscale, with closer fragments shown brighter.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw4-task3
+.\build\Release\nanorender_opengl.exe --preset hw4-task3-color
+.\build\Release\nanorender_opengl.exe --preset hw4-task3-depth
+```
+
+Result: depth testing resolves 37067 painter-order pixels. The color and depth
+views each cover 54834 pixels, and the depth view contains 94 grayscale levels.
+
+| Depth-tested color buffer | Depth-buffer visualization |
+| :---: | :---: |
+| ![HW4 Task 3 depth-tested color buffer](./assets/hw4_task3_depth_test_color.png) | ![HW4 Task 3 depth-buffer visualization](./assets/hw4_task3_depth_buffer.png) |
+
 ## Build and Run
 
 Requirements:
@@ -277,7 +296,7 @@ documentation, focused commit, and push are complete.
 
 - [x] Task 1: Add a GPU triangle bounding-box debug view
 - [x] Task 2: Add hardware triangle filling and visualize barycentric interpolation
-- [ ] Task 3: Add GPU depth testing and depth-buffer visualization
+- [x] Task 3: Add GPU depth testing and depth-buffer visualization
 
 ### HW5 - Lighting, Materials, and Shading
 
