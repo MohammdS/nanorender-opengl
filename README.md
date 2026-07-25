@@ -356,6 +356,19 @@ Run on Windows:
 .\build\Release\nanorender_opengl.exe
 ```
 
+Load one of the included higher-complexity OBJ models:
+
+```powershell
+.\build\Release\nanorender_opengl.exe --model .\models\cube.obj
+.\build\Release\nanorender_opengl.exe --model .\models\icosahedron.obj --preset hw5-task4-phong
+```
+
+`--model <path>` can be combined with a preset or with the HW2 Task 1 loader
+validation. The importer triangulates polygon faces and accepts positive,
+negative, and slash-separated vertex indices. It ignores texture coordinates,
+imported normals, and materials because this renderer calculates the normals
+used by its lighting pipeline.
+
 ## Roadmap
 
 This roadmap follows the engine-related task order in the original HW2-HW5

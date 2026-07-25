@@ -29,6 +29,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -81,6 +82,7 @@ struct CommandLineOptions {
     ValidationMode validation = ValidationMode::none;
     bool valid = true;
     StartupPreset preset = StartupPreset::none;
+    std::filesystem::path model_path;
 };
 
 struct UiInputState {
@@ -104,173 +106,124 @@ struct HW5LightingControls {
     int show_reflection_vectors = 0;
 };
 
+bool parse_validation_mode(
+    std::string_view name,
+    ValidationMode& validation)
+{
+    constexpr std::array<
+        std::pair<std::string_view, ValidationMode>,
+        18> modes {{
+        {"foundation", ValidationMode::foundation},
+        {"hw2-task1", ValidationMode::hw2_task1},
+        {"hw2-task2", ValidationMode::hw2_task2},
+        {"hw2-task3", ValidationMode::hw2_task3},
+        {"hw2-task4", ValidationMode::hw2_task4},
+        {"hw2-task5", ValidationMode::hw2_task5},
+        {"hw2-task6", ValidationMode::hw2_task6},
+        {"hw3-task1", ValidationMode::hw3_task1},
+        {"hw3-task2", ValidationMode::hw3_task2},
+        {"hw3-task3", ValidationMode::hw3_task3},
+        {"hw3-task4", ValidationMode::hw3_task4},
+        {"hw4-task1", ValidationMode::hw4_task1},
+        {"hw4-task2", ValidationMode::hw4_task2},
+        {"hw4-task3", ValidationMode::hw4_task3},
+        {"hw5-task1", ValidationMode::hw5_task1},
+        {"hw5-task2", ValidationMode::hw5_task2},
+        {"hw5-task3", ValidationMode::hw5_task3},
+        {"hw5-task4", ValidationMode::hw5_task4},
+    }};
+    for (const auto& [candidate, mode] : modes) {
+        if (name == candidate) {
+            validation = mode;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool parse_startup_preset(
+    std::string_view name,
+    StartupPreset& preset)
+{
+    constexpr std::array<
+        std::pair<std::string_view, StartupPreset>,
+        14> presets {{
+        {"hw2-task5-local-world", StartupPreset::local_then_world},
+        {"hw2-task5-world-local", StartupPreset::world_then_local},
+        {"hw3-task1-debug", StartupPreset::hw3_task1_debug},
+        {"hw3-task2-camera", StartupPreset::hw3_task2_camera},
+        {"hw3-task3-projection", StartupPreset::hw3_task3_projection},
+        {"hw3-task4-normals", StartupPreset::hw3_task4_normals},
+        {"hw4-task1-bounds", StartupPreset::hw4_task1_bounds},
+        {"hw4-task2-filled", StartupPreset::hw4_task2_filled},
+        {"hw4-task3-color", StartupPreset::hw4_task3_color},
+        {"hw4-task3-depth", StartupPreset::hw4_task3_depth},
+        {"hw5-task1-ambient", StartupPreset::hw5_task1_ambient},
+        {"hw5-task2-flat-diffuse", StartupPreset::hw5_task2_flat_diffuse},
+        {
+            "hw5-task3-specular-vectors",
+            StartupPreset::hw5_task3_specular_vectors,
+        },
+        {"hw5-task4-phong", StartupPreset::hw5_task4_phong},
+    }};
+    for (const auto& [candidate, mode] : presets) {
+        if (name == candidate) {
+            preset = mode;
+            return true;
+        }
+    }
+    return false;
+}
+
 CommandLineOptions parse_options(int argc, char* argv[])
 {
-    if (argc == 1) {
-        return {};
+    CommandLineOptions options;
+    bool action_seen = false;
+    bool model_seen = false;
+
+    for (int index = 1; index < argc; ++index) {
+        const std::string_view option = argv[index];
+        if (option == "--model") {
+            if (model_seen || index + 1 >= argc) {
+                options.valid = false;
+                return options;
+            }
+            options.model_path = argv[++index];
+            if (options.model_path.empty()) {
+                options.valid = false;
+                return options;
+            }
+            model_seen = true;
+            continue;
+        }
+
+        if (option == "--validate") {
+            if (action_seen || index + 1 >= argc
+                || !parse_validation_mode(
+                    argv[++index],
+                    options.validation)) {
+                options.valid = false;
+                return options;
+            }
+            action_seen = true;
+            continue;
+        }
+
+        if (option == "--preset") {
+            if (action_seen || index + 1 >= argc
+                || !parse_startup_preset(argv[++index], options.preset)) {
+                options.valid = false;
+                return options;
+            }
+            action_seen = true;
+            continue;
+        }
+
+        options.valid = false;
+        return options;
     }
 
-    if (argc == 3 && std::string_view(argv[1]) == "--validate") {
-        const std::string_view feature = argv[2];
-        if (feature == "foundation") {
-            return {.validation = ValidationMode::foundation, .valid = true};
-        }
-        if (feature == "hw2-task1") {
-            return {.validation = ValidationMode::hw2_task1, .valid = true};
-        }
-        if (feature == "hw2-task2") {
-            return {.validation = ValidationMode::hw2_task2, .valid = true};
-        }
-        if (feature == "hw2-task3") {
-            return {.validation = ValidationMode::hw2_task3, .valid = true};
-        }
-        if (feature == "hw2-task4") {
-            return {.validation = ValidationMode::hw2_task4, .valid = true};
-        }
-        if (feature == "hw2-task5") {
-            return {.validation = ValidationMode::hw2_task5, .valid = true};
-        }
-        if (feature == "hw2-task6") {
-            return {.validation = ValidationMode::hw2_task6, .valid = true};
-        }
-        if (feature == "hw3-task1") {
-            return {.validation = ValidationMode::hw3_task1, .valid = true};
-        }
-        if (feature == "hw3-task2") {
-            return {.validation = ValidationMode::hw3_task2, .valid = true};
-        }
-        if (feature == "hw3-task3") {
-            return {.validation = ValidationMode::hw3_task3, .valid = true};
-        }
-        if (feature == "hw3-task4") {
-            return {.validation = ValidationMode::hw3_task4, .valid = true};
-        }
-        if (feature == "hw4-task1") {
-            return {.validation = ValidationMode::hw4_task1, .valid = true};
-        }
-        if (feature == "hw4-task2") {
-            return {.validation = ValidationMode::hw4_task2, .valid = true};
-        }
-        if (feature == "hw4-task3") {
-            return {.validation = ValidationMode::hw4_task3, .valid = true};
-        }
-        if (feature == "hw5-task1") {
-            return {.validation = ValidationMode::hw5_task1, .valid = true};
-        }
-        if (feature == "hw5-task2") {
-            return {.validation = ValidationMode::hw5_task2, .valid = true};
-        }
-        if (feature == "hw5-task3") {
-            return {.validation = ValidationMode::hw5_task3, .valid = true};
-        }
-        if (feature == "hw5-task4") {
-            return {.validation = ValidationMode::hw5_task4, .valid = true};
-        }
-    }
-
-    if (argc == 3 && std::string_view(argv[1]) == "--preset") {
-        const std::string_view preset = argv[2];
-        if (preset == "hw2-task5-local-world") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::local_then_world,
-            };
-        }
-        if (preset == "hw2-task5-world-local") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::world_then_local,
-            };
-        }
-        if (preset == "hw3-task1-debug") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw3_task1_debug,
-            };
-        }
-        if (preset == "hw3-task2-camera") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw3_task2_camera,
-            };
-        }
-        if (preset == "hw3-task3-projection") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw3_task3_projection,
-            };
-        }
-        if (preset == "hw3-task4-normals") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw3_task4_normals,
-            };
-        }
-        if (preset == "hw4-task1-bounds") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw4_task1_bounds,
-            };
-        }
-        if (preset == "hw4-task2-filled") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw4_task2_filled,
-            };
-        }
-        if (preset == "hw4-task3-color") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw4_task3_color,
-            };
-        }
-        if (preset == "hw4-task3-depth") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw4_task3_depth,
-            };
-        }
-        if (preset == "hw5-task1-ambient") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw5_task1_ambient,
-            };
-        }
-        if (preset == "hw5-task2-flat-diffuse") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw5_task2_flat_diffuse,
-            };
-        }
-        if (preset == "hw5-task3-specular-vectors") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw5_task3_specular_vectors,
-            };
-        }
-        if (preset == "hw5-task4-phong") {
-            return {
-                .validation = ValidationMode::none,
-                .valid = true,
-                .preset = StartupPreset::hw5_task4_phong,
-            };
-        }
-    }
-
-    return {.validation = ValidationMode::none, .valid = false};
+    return options;
 }
 
 bool is_hw5_evidence_preset(StartupPreset preset)
@@ -1003,7 +956,11 @@ bool popup_sample_differs_from_background(int width, int height)
     return ui_sample_differs_from_background(30, 60, width, height);
 }
 
-bool validate_hw2_task1(const Mesh& mesh, int width, int height)
+bool validate_hw2_task1(
+    const Mesh& mesh,
+    int width,
+    int height,
+    bool require_default_counts)
 {
     bool indices_are_valid = true;
     for (const TriangleFace& face : mesh.faces) {
@@ -1020,8 +977,10 @@ bool validate_hw2_task1(const Mesh& mesh, int width, int height)
               << " valid_indices=" << (indices_are_valid ? "yes" : "no")
               << " popup_rendered=" << (popup_rendered ? "yes" : "no")
               << '\n';
-    return mesh.vertices.size() == 4 && mesh.faces.size() == 4
-        && indices_are_valid && popup_rendered
+    const bool expected_counts = !require_default_counts
+        || (mesh.vertices.size() == 4 && mesh.faces.size() == 4);
+    return !mesh.vertices.empty() && !mesh.faces.empty()
+        && expected_counts && indices_are_valid && popup_rendered
         && glGetError() == GL_NO_ERROR;
 }
 
@@ -2232,13 +2191,13 @@ int main(int argc, char* argv[])
 {
     const CommandLineOptions options = parse_options(argc, argv);
     if (!options.valid) {
-        std::cerr << "Usage: nanorender_opengl "
+        std::cerr << "Usage: nanorender_opengl [--model path] "
                      "[--validate foundation|hw2-task1|hw2-task2|"
                      "hw2-task3|hw2-task4|hw2-task5|hw2-task6|"
                      "hw3-task1|hw3-task2|hw3-task3|hw3-task4|"
                      "hw4-task1|hw4-task2|hw4-task3|hw5-task1|"
                      "hw5-task2|hw5-task3|hw5-task4] or "
-                     "[--preset hw2-task5-local-world|"
+                     "[--model path] [--preset hw2-task5-local-world|"
                      "hw2-task5-world-local|hw3-task1-debug|"
                      "hw3-task2-camera|hw3-task3-projection|"
                      "hw3-task4-normals|hw4-task1-bounds|"
@@ -2305,7 +2264,9 @@ int main(int argc, char* argv[])
     std::filesystem::path mesh_path;
     ViewportFit viewport_fit;
     try {
-        mesh_path = find_model_path(argv[0]);
+        mesh_path = options.model_path.empty()
+            ? find_model_path(argv[0])
+            : options.model_path;
         mesh = load_obj_mesh(mesh_path);
         mesh_normals = calculate_mesh_normals(mesh);
         viewport_fit = calculate_viewport_fit(
@@ -2780,7 +2741,8 @@ int main(int argc, char* argv[])
                 passed = validate_hw2_task1(
                     mesh,
                     framebuffer_width,
-                    framebuffer_height);
+                    framebuffer_height,
+                    options.model_path.empty());
                 validation_name = "HW2 Task 1";
             } else if (options.validation == ValidationMode::hw2_task2) {
                 passed = validate_hw2_task2(mesh, viewport_fit);
