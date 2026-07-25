@@ -292,6 +292,23 @@ RGB `(0.70, 0.70, 0.70)`, and all 6 debug vectors render.
 
 ![HW5 Task 3 specular lighting and reflection vectors](./assets/hw5_task3_specular_vectors.jpg)
 
+### HW5 Task 4 - Per-Fragment Phong Shading
+
+The lighting VBO now carries vertex normals. The vertex shader applies the
+inverse-transpose normal matrix, then the GPU interpolates view-space positions
+and normals so the fragment shader evaluates ambient, diffuse, and specular
+lighting for every pixel.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw5-task4
+.\build\Release\nanorender_opengl.exe --preset hw5-task4-phong
+```
+
+Result: coverage remains 49861 pixels; flat shading uses 2 colors while smooth
+Phong shading produces 842 colors and changes 42368 pixels.
+
+![HW5 Task 4 per-fragment Phong shading](./assets/hw5_task4_phong_shading.jpg)
+
 ## Build and Run
 
 Requirements:
@@ -352,7 +369,7 @@ documentation, focused commit, and push are complete.
 - [x] Task 1: Add light/material properties and ambient lighting
 - [x] Task 2: Add flat diffuse shading
 - [x] Task 3: Add specular lighting and reflection-vector debugging
-- [ ] Task 4: Add per-fragment Phong shading
+- [x] Task 4: Add per-fragment Phong shading
 
 ### Final Comparison
 

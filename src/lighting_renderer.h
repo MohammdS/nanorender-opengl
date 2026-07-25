@@ -55,6 +55,14 @@ public:
         const PointLight& light,
         const Material& material) const;
 
+    std::size_t render_phong(
+        const ViewportFit& fit,
+        const TransformControls& transforms,
+        const CameraControls& camera,
+        const ProjectionControls& projection,
+        const PointLight& light,
+        const Material& material) const;
+
     ReflectionVectorCounts render_reflection_vectors(
         const ViewportFit& fit,
         const TransformControls& transforms,
@@ -77,6 +85,7 @@ private:
 
     ShaderProgram ambient_shader_;
     ShaderProgram flat_diffuse_shader_;
+    ShaderProgram phong_shader_;
     ShaderProgram reflection_vector_shader_;
     GLuint vertex_array_ = 0;
     GLuint vertex_buffer_ = 0;

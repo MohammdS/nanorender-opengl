@@ -3,15 +3,22 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
+#include <cstddef>
 #include <limits>
 #include <stdexcept>
 #include <vector>
 
 namespace {
 
-std::vector<glm::vec3> build_triangle_vertices(const Mesh& mesh)
+struct LightingVertex {
+    glm::vec3 position {0.0F};
+    glm::vec3 normal {0.0F};
+};
+
+std::vector<LightingVertex> build_triangle_vertices(const Mesh& mesh)
 {
-    std::vector<glm::vec3> vertices;
+    const MeshNormals normals = calculate_mesh_normals(mesh);
+    std::vector<LightingVertex> vertices;
     vertices.reserve(mesh.faces.size() * 3);
     for (const TriangleFace& face : mesh.faces) {
         for (const std::uint32_t index : face.indices) {
@@ -19,7 +26,8 @@ std::vector<glm::vec3> build_triangle_vertices(const Mesh& mesh)
                 throw std::runtime_error(
                     "Cannot light a triangle with an invalid vertex index.");
             }
-            vertices.push_back(mesh.vertices[index]);
+            vertices.push_back(
+                {mesh.vertices[index], normals.vertex_normals[index]});
         }
     }
     return vertices;
@@ -42,12 +50,16 @@ LightingRenderer::LightingRenderer(
           shader_directory / "flat_diffuse_lighting.vert",
           shader_directory / "flat_diffuse_lighting.geom",
           shader_directory / "flat_diffuse_lighting.frag"),
+      phong_shader_(
+          shader_directory / "phong_lighting.vert",
+          shader_directory / "phong_lighting.frag"),
       reflection_vector_shader_(
           shader_directory / "lighting_vectors.vert",
           shader_directory / "lighting_vectors.geom",
           shader_directory / "lighting_vectors.frag")
 {
-    const std::vector<glm::vec3> vertices = build_triangle_vertices(mesh);
+    const std::vector<LightingVertex> vertices =
+        build_triangle_vertices(mesh);
     if (vertices.empty()) {
         throw std::runtime_error(
             "Cannot light a mesh without triangle faces.");
@@ -69,7 +81,8 @@ LightingRenderer::LightingRenderer(
     glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer_);
     glBufferData(
         GL_ARRAY_BUFFER,
-        static_cast<GLsizeiptr>(vertices.size() * sizeof(glm::vec3)),
+        static_cast<GLsizeiptr>(
+            vertices.size() * sizeof(LightingVertex)),
         vertices.data(),
         GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
@@ -78,8 +91,18 @@ LightingRenderer::LightingRenderer(
         3,
         GL_FLOAT,
         GL_FALSE,
-        sizeof(glm::vec3),
-        nullptr);
+        sizeof(LightingVertex),
+        reinterpret_cast<const void*>(
+            offsetof(LightingVertex, position)));
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(
+        1,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        sizeof(LightingVertex),
+        reinterpret_cast<const void*>(
+            offsetof(LightingVertex, normal)));
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 }
@@ -185,6 +208,78 @@ std::size_t LightingRenderer::render_specular(
         light,
         material,
         true);
+}
+
+std::size_t LightingRenderer::render_phong(
+    const ViewportFit& fit,
+    const TransformControls& transforms,
+    const CameraControls& camera,
+    const ProjectionControls& projection_controls,
+    const PointLight& light,
+    const Material& material) const
+{
+    const glm::mat4 viewport_fit =
+        glm::translate(glm::mat4(1.0F), fit.translation)
+        * glm::scale(glm::mat4(1.0F), glm::vec3(fit.uniform_scale));
+    const glm::mat4 view = build_camera_view_matrix(camera);
+    const glm::vec3 light_position_view =
+        glm::vec3(view * glm::vec4(light.position, 1.0F));
+
+    GLint previous_program = 0;
+    GLint previous_vertex_array = 0;
+    GLint previous_depth_function = GL_LESS;
+    GLboolean previous_depth_mask = GL_TRUE;
+    const GLboolean depth_test_was_enabled = glIsEnabled(GL_DEPTH_TEST);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previous_vertex_array);
+    glGetIntegerv(GL_DEPTH_FUNC, &previous_depth_function);
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &previous_depth_mask);
+
+    phong_shader_.use();
+    phong_shader_.set_mat4("u_viewport_fit", viewport_fit);
+    phong_shader_.set_mat4(
+        "u_local_transform",
+        build_local_transform_matrix(transforms, fit));
+    phong_shader_.set_mat4(
+        "u_world_transform",
+        build_world_transform_matrix(transforms));
+    phong_shader_.set_mat4("u_view", view);
+    phong_shader_.set_mat4(
+        "u_projection",
+        build_projection_matrix(fit, projection_controls));
+    phong_shader_.set_vec3(
+        "u_light_position_view",
+        light_position_view);
+    phong_shader_.set_vec3("u_light_ambient", light.ambient);
+    phong_shader_.set_vec3("u_light_diffuse", light.diffuse);
+    phong_shader_.set_vec3("u_light_specular", light.specular);
+    phong_shader_.set_vec3(
+        "u_material_ambient",
+        material.ambient);
+    phong_shader_.set_vec3(
+        "u_material_diffuse",
+        material.diffuse);
+    phong_shader_.set_vec3(
+        "u_material_specular",
+        material.specular);
+    phong_shader_.set_float("u_shininess", material.shininess);
+
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);
+    glBindVertexArray(vertex_array_);
+    glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
+
+    glDepthFunc(static_cast<GLenum>(previous_depth_function));
+    glDepthMask(previous_depth_mask);
+    if (depth_test_was_enabled == GL_TRUE) {
+        glEnable(GL_DEPTH_TEST);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
+    glBindVertexArray(static_cast<GLuint>(previous_vertex_array));
+    glUseProgram(static_cast<GLuint>(previous_program));
+    return triangle_count();
 }
 
 std::size_t LightingRenderer::render_flat_lighting(
