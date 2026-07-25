@@ -1,9 +1,11 @@
 # NanoRender OpenGL
 
-NanoRender OpenGL is a renderer developed incrementally to move a complete
-graphics pipeline from CPU-side pixel processing to OpenGL and GLSL. Each
-milestone keeps the application buildable, adds one focused GPU capability,
-and records its validation and visual evidence here.
+NanoRender OpenGL is the OpenGL and GLSL GPU port of the
+[original NanoRender CPU course project](https://github.com/xCraftCourses/cg-at-uoh-26-MohammdS).
+It reproduces the complete HW2-HW5 graphics pipeline while moving geometry
+processing, rasterization, depth testing, and shading onto the GPU. Each
+section records one completed capability with its validation and visual
+evidence.
 
 ## Current Status
 
@@ -356,7 +358,7 @@ Run on Windows:
 .\build\Release\nanorender_opengl.exe
 ```
 
-Load one of the included higher-complexity OBJ models:
+Load one of the included more complex OBJ models:
 
 ```powershell
 .\build\Release\nanorender_opengl.exe --model .\models\cube.obj
@@ -387,7 +389,7 @@ documentation, focused commit, and push are complete.
 - [x] Task 3: Render an indexed orthographic wireframe mesh
 - [x] Task 4: Add separate local and world transformation controls
 - [x] Task 5: Apply model transformations in the vertex shader
-- [x] Task 6: Add direct keyboard or mouse transformation controls
+- [x] Task 6: Add direct keyboard transformation controls
 
 ### HW3 - Virtual Cameras and Projections
 
@@ -413,7 +415,6 @@ documentation, focused commit, and push are complete.
 
 - [x] Document the final CPU-to-GPU architectural comparison
 
-
 ## Project Structure
 
 ```text
@@ -426,4 +427,3 @@ nanorender-opengl/
 |-- CMakeLists.txt  Build and dependency configuration
 `-- README.md       Documentation and progress log
 ```
-
