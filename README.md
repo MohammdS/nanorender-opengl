@@ -429,11 +429,3 @@ nanorender-opengl/
 `-- README.md       Documentation and progress log
 ```
 
-## Development Workflow
-
-Work is divided into small feature milestones. Every milestone must compile,
-pass its validation mode, update this README, and receive a focused commit and
-push before the next feature begins. Task notes stay brief and are appended in
-implementation order from top to bottom. Visual milestones include a direct
-screenshot or short GIF under `assets/`, whichever demonstrates the result more
-clearly; animated evidence is kept below 3 MB.
