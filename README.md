@@ -309,6 +309,36 @@ Phong shading produces 842 colors and changes 42368 pixels.
 
 ![HW5 Task 4 per-fragment Phong shading](./assets/hw5_task4_phong_shading.jpg)
 
+### Final CPU-to-GPU Comparison
+
+The CPU renderer and this OpenGL port implement the same HW2-HW5 progression.
+Their checks agree on the 4-face tetrahedron, coordinate and normal counts, and
+the known lighting cases: ambient RGB `(0.20, 0.20, 0.30)`, diffuse RGB
+`(0.50, 0.50, 0.50)`, reflection `(0.707, 0.707, 0)`, specular RGB
+`(0.70, 0.70, 0.70)`, and three incoming plus three reflected vectors.
+
+| Pipeline stage | Original CPU renderer | OpenGL GPU renderer |
+| --- | --- | --- |
+| Geometry | C++ transforms and projects vertices each frame | Vertex buffers retain geometry and vertex shaders apply matrices |
+| Lines and helpers | CPU line routines write framebuffer pixels | Indexed `GL_LINES` and dynamic GPU line buffers |
+| Rasterization | C++ bounding-box and barycentric pixel loops | Geometry shaders for bounds and hardware triangle rasterization |
+| Depth | A CPU `float` Z-buffer is cleared and tested manually | The 24-bit OpenGL depth buffer uses `GL_LESS` |
+| Lighting | C++ evaluates flat and per-pixel Phong lighting | Geometry and fragment shaders evaluate flat and per-fragment lighting |
+| UI and output | MicroUI is rasterized into a 1600 x 1200 CPU color buffer presented by MiniFB | MicroUI, scene color, and depth remain in a 1280 x 720 OpenGL framebuffer presented by GLFW |
+
+The CPU path performs work directly over framebuffer and covered pixels, while
+the OpenGL path submits draw calls and lets dedicated GPU stages rasterize,
+depth-test, interpolate, and shade fragments. This should scale differently as
+scene and pixel workloads grow, but no timing benchmark was run, so this
+comparison does not claim a measured speedup. Pixel counts and the final images
+also differ because the applications use different framebuffer sizes, viewport
+fits, backgrounds, and presentation layers; feature parity here means matching
+pipeline behavior rather than pixel-for-pixel output.
+
+| Original CPU per-pixel Phong result | OpenGL per-fragment Phong result |
+| :---: | :---: |
+| ![Original CPU renderer with smooth Phong shading](./assets/final_comparison_cpu_phong.jpg) | ![OpenGL renderer with smooth Phong shading](./assets/hw5_task4_phong_shading.jpg) |
+
 ## Build and Run
 
 Requirements:
@@ -373,7 +403,7 @@ documentation, focused commit, and push are complete.
 
 ### Final Comparison
 
-- [ ] Document the final CPU-to-GPU architecture, behavior, and performance comparison
+- [x] Document the final CPU-to-GPU architecture, behavior, and performance comparison
 
 Pair-programming extensions are outside this roadmap because they were not part
 of the completed task reports used as the reference for this port.
