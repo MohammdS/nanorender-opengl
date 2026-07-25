@@ -413,8 +413,6 @@ documentation, focused commit, and push are complete.
 
 - [x] Document the final CPU-to-GPU architectural comparison
 
-Pair-programming extensions are outside this roadmap because they were not part
-of the completed task reports used as the reference for this port.
 
 ## Project Structure
 
