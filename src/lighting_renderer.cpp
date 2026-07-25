@@ -2,6 +2,7 @@
 
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <algorithm>
 #include <limits>
 #include <stdexcept>
 #include <vector>
@@ -26,6 +27,11 @@ std::vector<glm::vec3> build_triangle_vertices(const Mesh& mesh)
 
 } // namespace
 
+std::size_t ReflectionVectorCounts::total() const
+{
+    return incoming + reflected;
+}
+
 LightingRenderer::LightingRenderer(
     const Mesh& mesh,
     const std::filesystem::path& shader_directory)
@@ -35,7 +41,11 @@ LightingRenderer::LightingRenderer(
       flat_diffuse_shader_(
           shader_directory / "flat_diffuse_lighting.vert",
           shader_directory / "flat_diffuse_lighting.geom",
-          shader_directory / "flat_diffuse_lighting.frag")
+          shader_directory / "flat_diffuse_lighting.frag"),
+      reflection_vector_shader_(
+          shader_directory / "lighting_vectors.vert",
+          shader_directory / "lighting_vectors.geom",
+          shader_directory / "lighting_vectors.frag")
 {
     const std::vector<glm::vec3> vertices = build_triangle_vertices(mesh);
     if (vertices.empty()) {
@@ -149,6 +159,43 @@ std::size_t LightingRenderer::render_flat_diffuse(
     const PointLight& light,
     const Material& material) const
 {
+    return render_flat_lighting(
+        fit,
+        transforms,
+        camera,
+        projection_controls,
+        light,
+        material,
+        false);
+}
+
+std::size_t LightingRenderer::render_specular(
+    const ViewportFit& fit,
+    const TransformControls& transforms,
+    const CameraControls& camera,
+    const ProjectionControls& projection_controls,
+    const PointLight& light,
+    const Material& material) const
+{
+    return render_flat_lighting(
+        fit,
+        transforms,
+        camera,
+        projection_controls,
+        light,
+        material,
+        true);
+}
+
+std::size_t LightingRenderer::render_flat_lighting(
+    const ViewportFit& fit,
+    const TransformControls& transforms,
+    const CameraControls& camera,
+    const ProjectionControls& projection_controls,
+    const PointLight& light,
+    const Material& material,
+    bool include_specular) const
+{
     const glm::mat4 viewport_fit =
         glm::translate(glm::mat4(1.0F), fit.translation)
         * glm::scale(glm::mat4(1.0F), glm::vec3(fit.uniform_scale));
@@ -183,12 +230,20 @@ std::size_t LightingRenderer::render_flat_diffuse(
         light_position_view);
     flat_diffuse_shader_.set_vec3("u_light_ambient", light.ambient);
     flat_diffuse_shader_.set_vec3("u_light_diffuse", light.diffuse);
+    flat_diffuse_shader_.set_vec3("u_light_specular", light.specular);
     flat_diffuse_shader_.set_vec3(
         "u_material_ambient",
         material.ambient);
     flat_diffuse_shader_.set_vec3(
         "u_material_diffuse",
         material.diffuse);
+    flat_diffuse_shader_.set_vec3(
+        "u_material_specular",
+        material.specular);
+    flat_diffuse_shader_.set_float("u_shininess", material.shininess);
+    flat_diffuse_shader_.set_int(
+        "u_enable_specular",
+        include_specular ? 1 : 0);
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -206,6 +261,85 @@ std::size_t LightingRenderer::render_flat_diffuse(
     glBindVertexArray(static_cast<GLuint>(previous_vertex_array));
     glUseProgram(static_cast<GLuint>(previous_program));
     return triangle_count();
+}
+
+ReflectionVectorCounts LightingRenderer::render_reflection_vectors(
+    const ViewportFit& fit,
+    const TransformControls& transforms,
+    const CameraControls& camera,
+    const ProjectionControls& projection_controls,
+    const PointLight& light,
+    std::size_t face_limit) const
+{
+    const std::size_t drawn_faces =
+        std::min(face_limit, triangle_count());
+    if (drawn_faces == 0) {
+        return {};
+    }
+
+    const glm::mat4 viewport_fit =
+        glm::translate(glm::mat4(1.0F), fit.translation)
+        * glm::scale(glm::mat4(1.0F), glm::vec3(fit.uniform_scale));
+    const glm::mat4 view = build_camera_view_matrix(camera);
+    const glm::vec3 light_position_view =
+        glm::vec3(view * glm::vec4(light.position, 1.0F));
+
+    GLint previous_program = 0;
+    GLint previous_vertex_array = 0;
+    GLboolean previous_depth_mask = GL_TRUE;
+    const GLboolean depth_test_was_enabled = glIsEnabled(GL_DEPTH_TEST);
+    const GLboolean cull_face_was_enabled = glIsEnabled(GL_CULL_FACE);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previous_vertex_array);
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &previous_depth_mask);
+
+    reflection_vector_shader_.use();
+    reflection_vector_shader_.set_mat4("u_viewport_fit", viewport_fit);
+    reflection_vector_shader_.set_mat4(
+        "u_local_transform",
+        build_local_transform_matrix(transforms, fit));
+    reflection_vector_shader_.set_mat4(
+        "u_world_transform",
+        build_world_transform_matrix(transforms));
+    reflection_vector_shader_.set_mat4("u_view", view);
+    reflection_vector_shader_.set_mat4(
+        "u_projection",
+        build_projection_matrix(fit, projection_controls));
+    reflection_vector_shader_.set_vec3(
+        "u_light_position_view",
+        light_position_view);
+    reflection_vector_shader_.set_int(
+        "u_face_limit",
+        static_cast<int>(drawn_faces));
+    reflection_vector_shader_.set_float(
+        "u_vector_length",
+        fit.uniform_scale * 0.95F);
+    reflection_vector_shader_.set_float("u_line_half_width", 2.5F);
+    reflection_vector_shader_.set_vec2(
+        "u_viewport_size",
+        static_cast<float>(fit.viewport_width),
+        static_cast<float>(fit.viewport_height));
+
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    glDisable(GL_CULL_FACE);
+    glBindVertexArray(vertex_array_);
+    glDrawArrays(GL_TRIANGLES, 0, vertex_count_);
+
+    glDepthMask(previous_depth_mask);
+    if (depth_test_was_enabled == GL_TRUE) {
+        glEnable(GL_DEPTH_TEST);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
+    if (cull_face_was_enabled == GL_TRUE) {
+        glEnable(GL_CULL_FACE);
+    } else {
+        glDisable(GL_CULL_FACE);
+    }
+    glBindVertexArray(static_cast<GLuint>(previous_vertex_array));
+    glUseProgram(static_cast<GLuint>(previous_program));
+    return {drawn_faces, drawn_faces};
 }
 
 std::size_t LightingRenderer::triangle_count() const

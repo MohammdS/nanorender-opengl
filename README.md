@@ -276,6 +276,22 @@ Result: the known Lambert test produces RGB `(0.50, 0.50, 0.50)` with factor
 
 ![HW5 Task 2 flat diffuse shading](./assets/hw5_task2_flat_diffuse_shading.jpg)
 
+### HW5 Task 3 - Specular Lighting and Reflection Vectors
+
+The flat-lighting geometry shader now adds a shininess-controlled specular
+term. A second GPU geometry pass draws orange incoming-light vectors and
+magenta reflection vectors from three face centers.
+
+```powershell
+.\build\Release\nanorender_opengl.exe --validate hw5-task3
+.\build\Release\nanorender_opengl.exe --preset hw5-task3-specular-vectors
+```
+
+Result: the known reflection is `(0.707, 0.707, 0)`, the Phong test produces
+RGB `(0.70, 0.70, 0.70)`, and all 6 debug vectors render.
+
+![HW5 Task 3 specular lighting and reflection vectors](./assets/hw5_task3_specular_vectors.jpg)
+
 ## Build and Run
 
 Requirements:
@@ -335,7 +351,7 @@ documentation, focused commit, and push are complete.
 
 - [x] Task 1: Add light/material properties and ambient lighting
 - [x] Task 2: Add flat diffuse shading
-- [ ] Task 3: Add specular lighting and reflection-vector debugging
+- [x] Task 3: Add specular lighting and reflection-vector debugging
 - [ ] Task 4: Add per-fragment Phong shading
 
 ### Final Comparison

@@ -12,6 +12,7 @@
 #include "triangle_bounds_renderer.h"
 
 #include <glm/geometric.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
 
 #include <algorithm>
 #include <array>
@@ -54,6 +55,7 @@ enum class ValidationMode {
     hw4_task3,
     hw5_task1,
     hw5_task2,
+    hw5_task3,
 };
 
 enum class StartupPreset {
@@ -70,6 +72,7 @@ enum class StartupPreset {
     hw4_task3_depth,
     hw5_task1_ambient,
     hw5_task2_flat_diffuse,
+    hw5_task3_specular_vectors,
 };
 
 struct CommandLineOptions {
@@ -94,6 +97,8 @@ struct HW4RasterControls {
 struct HW5LightingControls {
     int show_ambient_lighting = 0;
     int show_flat_diffuse = 0;
+    int show_specular = 0;
+    int show_reflection_vectors = 0;
 };
 
 CommandLineOptions parse_options(int argc, char* argv[])
@@ -151,6 +156,9 @@ CommandLineOptions parse_options(int argc, char* argv[])
         }
         if (feature == "hw5-task2") {
             return {.validation = ValidationMode::hw5_task2, .valid = true};
+        }
+        if (feature == "hw5-task3") {
+            return {.validation = ValidationMode::hw5_task3, .valid = true};
         }
     }
 
@@ -240,9 +248,23 @@ CommandLineOptions parse_options(int argc, char* argv[])
                 .preset = StartupPreset::hw5_task2_flat_diffuse,
             };
         }
+        if (preset == "hw5-task3-specular-vectors") {
+            return {
+                .validation = ValidationMode::none,
+                .valid = true,
+                .preset = StartupPreset::hw5_task3_specular_vectors,
+            };
+        }
     }
 
     return {.validation = ValidationMode::none, .valid = false};
+}
+
+bool is_hw5_evidence_preset(StartupPreset preset)
+{
+    return preset == StartupPreset::hw5_task1_ambient
+        || preset == StartupPreset::hw5_task2_flat_diffuse
+        || preset == StartupPreset::hw5_task3_specular_vectors;
 }
 
 void glfw_error_callback(int error, const char* description)
@@ -831,6 +853,7 @@ void build_hw5_lighting_window(
         if ((ambient_result & MU_RES_CHANGE) != 0
             && controls.show_ambient_lighting != 0) {
             controls.show_flat_diffuse = 0;
+            controls.show_specular = 0;
         }
         const int diffuse_result = mu_checkbox(
             &context,
@@ -839,7 +862,21 @@ void build_hw5_lighting_window(
         if ((diffuse_result & MU_RES_CHANGE) != 0
             && controls.show_flat_diffuse != 0) {
             controls.show_ambient_lighting = 0;
+            controls.show_specular = 0;
         }
+        const int specular_result = mu_checkbox(
+            &context,
+            "Show Specular Highlights",
+            &controls.show_specular);
+        if ((specular_result & MU_RES_CHANGE) != 0
+            && controls.show_specular != 0) {
+            controls.show_ambient_lighting = 0;
+            controls.show_flat_diffuse = 0;
+        }
+        mu_checkbox(
+            &context,
+            "Show Light / Reflection Vectors",
+            &controls.show_reflection_vectors);
 
         mu_label(&context, "Point light");
         draw_compact_vec3_controls(
@@ -888,6 +925,15 @@ void build_hw5_lighting_window(
             material.specular,
             0.0F,
             1.0F);
+        draw_named_slider(
+            context,
+            "Shininess",
+            material.shininess,
+            1.0F,
+            128.0F);
+        mu_layout_row(&context, 1, full_width, 0);
+        mu_label(&context, "Orange: incoming light");
+        mu_label(&context, "Magenta: reflected light");
         mu_end_window(&context);
     }
 }
@@ -1872,6 +1918,174 @@ bool validate_hw5_task2(
         && flat_face_variation && glGetError() == GL_NO_ERROR;
 }
 
+PointLight make_specular_demo_light(
+    const Mesh& mesh,
+    const ViewportFit& fit,
+    const TransformControls& transforms,
+    const CameraControls& camera,
+    std::size_t face_index = 0)
+{
+    PointLight light;
+    if (mesh.faces.empty()) {
+        return light;
+    }
+
+    const TriangleFace& face =
+        mesh.faces[std::min(face_index, mesh.faces.size() - 1)];
+    const glm::mat4 view = build_camera_view_matrix(camera);
+    const glm::mat4 model_to_view =
+        view * build_world_transform_matrix(transforms)
+        * build_local_transform_matrix(transforms, fit);
+    const auto transform_to_view =
+        [&mesh, &fit, &model_to_view](std::uint32_t index) {
+            return glm::vec3(
+                model_to_view
+                * glm::vec4(
+                    apply_viewport_fit(mesh.vertices[index], fit),
+                    1.0F));
+        };
+    const glm::vec3 a = transform_to_view(face.indices[0]);
+    const glm::vec3 b = transform_to_view(face.indices[1]);
+    const glm::vec3 c = transform_to_view(face.indices[2]);
+    const glm::vec3 center = (a + b + c) / 3.0F;
+    const glm::vec3 normal = glm::normalize(
+        glm::cross(b - a, c - a));
+    const glm::vec3 view_direction = glm::normalize(-center);
+    const glm::vec3 desired_incident =
+        calculate_reflection_vector(view_direction, normal);
+    const glm::vec3 light_position_view =
+        center - desired_incident * 1000.0F;
+    light.position = glm::vec3(
+        glm::inverse(view) * glm::vec4(light_position_view, 1.0F));
+    return light;
+}
+
+bool validate_hw5_task3(
+    const Mesh& mesh,
+    const LightingRenderer& renderer,
+    const ViewportFit& fit)
+{
+    const glm::vec3 reflected = calculate_reflection_vector(
+        glm::normalize(glm::vec3(1.0F, -1.0F, 0.0F)),
+        glm::vec3(0.0F, 1.0F, 0.0F));
+    const float expected_component = std::sqrt(0.5F);
+
+    PointLight test_light;
+    test_light.position = glm::vec3(0.0F, 0.0F, 10.0F);
+    test_light.ambient = glm::vec3(0.2F);
+    test_light.diffuse = glm::vec3(0.8F);
+    test_light.specular = glm::vec3(0.2F);
+    Material test_material;
+    test_material.ambient = glm::vec3(0.5F);
+    test_material.diffuse = glm::vec3(0.5F);
+    test_material.specular = glm::vec3(1.0F);
+    test_material.shininess = 32.0F;
+    float test_diffuse = 0.0F;
+    float test_specular = 0.0F;
+    const glm::vec3 test_color = calculate_phong_lighting(
+        test_light,
+        test_material,
+        glm::vec3(0.0F),
+        glm::vec3(0.0F, 0.0F, 1.0F),
+        glm::vec3(0.0F, 0.0F, 10.0F),
+        &test_diffuse,
+        &test_specular);
+
+    TransformControls transforms;
+    transforms.local_rotation = glm::vec3(25.0F, -35.0F, 0.0F);
+    const CameraControls camera;
+    const ProjectionControls projection;
+    PointLight render_light =
+        make_specular_demo_light(mesh, fit, transforms, camera);
+    render_light.ambient = glm::vec3(0.12F);
+    render_light.diffuse = glm::vec3(0.55F);
+    render_light.specular = glm::vec3(0.9F);
+    Material render_material;
+    render_material.ambient = glm::vec3(0.2F, 0.4F, 0.65F);
+    render_material.diffuse = glm::vec3(0.15F, 0.4F, 0.7F);
+    render_material.specular = glm::vec3(1.0F);
+    render_material.shininess = 32.0F;
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    renderer.render_flat_diffuse(
+        fit,
+        transforms,
+        camera,
+        projection,
+        render_light,
+        render_material);
+    const std::vector<unsigned char> diffuse_pixels = read_rgb_pixels(
+        fit.viewport_width,
+        fit.viewport_height);
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    const std::size_t triangles = renderer.render_specular(
+        fit,
+        transforms,
+        camera,
+        projection,
+        render_light,
+        render_material);
+    const std::vector<unsigned char> specular_pixels = read_rgb_pixels(
+        fit.viewport_width,
+        fit.viewport_height);
+    const ColoredPixelSample specular_sample =
+        analyze_colored_pixels(specular_pixels);
+    const std::size_t highlighted_pixels =
+        count_changed_pixels(diffuse_pixels, specular_pixels);
+
+    const ReflectionVectorCounts vectors =
+        renderer.render_reflection_vectors(
+            fit,
+            transforms,
+            camera,
+            projection,
+            render_light);
+    const std::vector<unsigned char> vector_pixels = read_rgb_pixels(
+        fit.viewport_width,
+        fit.viewport_height);
+    const std::size_t debug_vector_pixels =
+        count_changed_pixels(specular_pixels, vector_pixels);
+
+    const bool known_reflection =
+        vec3_nearly_equal(
+            reflected,
+            glm::vec3(
+                expected_component,
+                expected_component,
+                0.0F));
+    const bool known_phong_result =
+        vec3_nearly_equal(test_color, glm::vec3(0.7F))
+        && nearly_equal(test_diffuse, 1.0F)
+        && nearly_equal(test_specular, 1.0F);
+    const bool gpu_specular_visible =
+        triangles == mesh.faces.size()
+        && specular_sample.pixel_count >= 10000
+        && highlighted_pixels >= 1000;
+    const bool gpu_vectors_visible =
+        vectors.incoming == 3 && vectors.reflected == 3
+        && debug_vector_pixels >= 100;
+
+    std::cout << std::fixed << std::setprecision(3)
+              << "HW5 Task 3 specular: reflection=("
+              << reflected.x << ", " << reflected.y << ", "
+              << reflected.z << ") test_rgb=("
+              << std::setprecision(2) << test_color.r << ", "
+              << test_color.g << ", " << test_color.b
+              << ") diffuse=" << test_diffuse
+              << " specular=" << test_specular
+              << " triangles=" << triangles
+              << " pixels=" << specular_sample.pixel_count
+              << " highlighted_pixels=" << highlighted_pixels
+              << " incoming_lines=" << vectors.incoming
+              << " reflected_lines=" << vectors.reflected
+              << " vector_pixels=" << debug_vector_pixels << '\n'
+              << std::defaultfloat;
+    return known_reflection && known_phong_result
+        && gpu_specular_visible && gpu_vectors_visible
+        && glGetError() == GL_NO_ERROR;
+}
+
 std::string make_window_title(
     const std::filesystem::path& mesh_path,
     const Mesh& mesh,
@@ -1928,14 +2142,15 @@ int main(int argc, char* argv[])
                      "hw2-task3|hw2-task4|hw2-task5|hw2-task6|"
                      "hw3-task1|hw3-task2|hw3-task3|hw3-task4|"
                      "hw4-task1|hw4-task2|hw4-task3|hw5-task1|"
-                     "hw5-task2] or "
+                     "hw5-task2|hw5-task3] or "
                      "[--preset hw2-task5-local-world|"
                      "hw2-task5-world-local|hw3-task1-debug|"
                      "hw3-task2-camera|hw3-task3-projection|"
                      "hw3-task4-normals|hw4-task1-bounds|"
                      "hw4-task2-filled|hw4-task3-color|"
                      "hw4-task3-depth|hw5-task1-ambient|"
-                     "hw5-task2-flat-diffuse]\n";
+                     "hw5-task2-flat-diffuse|"
+                     "hw5-task3-specular-vectors]\n";
         return EXIT_FAILURE;
     }
 
@@ -2098,7 +2313,8 @@ int main(int argc, char* argv[])
     }
     if (options.validation == ValidationMode::none
         || options.validation == ValidationMode::hw5_task1
-        || options.validation == ValidationMode::hw5_task2) {
+        || options.validation == ValidationMode::hw5_task2
+        || options.validation == ValidationMode::hw5_task3) {
         try {
             lighting_renderer = std::make_unique<LightingRenderer>(
                 mesh,
@@ -2185,6 +2401,24 @@ int main(int argc, char* argv[])
         point_light.ambient = glm::vec3(0.18F);
         point_light.diffuse = glm::vec3(0.85F);
         hw5_lighting.show_flat_diffuse = 1;
+    } else if (
+        options.preset == StartupPreset::hw5_task3_specular_vectors) {
+        transform_controls.local_rotation =
+            glm::vec3(25.0F, -35.0F, 0.0F);
+        point_light = make_specular_demo_light(
+            mesh,
+            viewport_fit,
+            transform_controls,
+            camera);
+        point_light.ambient = glm::vec3(0.12F);
+        point_light.diffuse = glm::vec3(0.55F);
+        point_light.specular = glm::vec3(0.9F);
+        material.ambient = glm::vec3(0.2F, 0.4F, 0.65F);
+        material.diffuse = glm::vec3(0.15F, 0.4F, 0.7F);
+        material.specular = glm::vec3(1.0F);
+        material.shininess = 32.0F;
+        hw5_lighting.show_specular = 1;
+        hw5_lighting.show_reflection_vectors = 1;
     }
     if (options.validation == ValidationMode::hw4_task1) {
         hw4_raster.show_triangle_bounds = 1;
@@ -2199,6 +2433,9 @@ int main(int argc, char* argv[])
         hw5_lighting.show_ambient_lighting = 1;
     } else if (options.validation == ValidationMode::hw5_task2) {
         hw5_lighting.show_flat_diffuse = 1;
+    } else if (options.validation == ValidationMode::hw5_task3) {
+        hw5_lighting.show_specular = 1;
+        hw5_lighting.show_reflection_vectors = 1;
     }
     bool popup_initialized = false;
     bool transform_controls_initialized = false;
@@ -2255,9 +2492,7 @@ int main(int argc, char* argv[])
                 viewport_fit,
                 toggle_popup,
                 popup_initialized,
-                options.preset != StartupPreset::hw5_task1_ambient
-                    && options.preset
-                        != StartupPreset::hw5_task2_flat_diffuse);
+                !is_hw5_evidence_preset(options.preset));
             if (options.validation == ValidationMode::none
                 || options.validation == ValidationMode::hw2_task4
                 || options.validation == ValidationMode::hw2_task5
@@ -2289,8 +2524,7 @@ int main(int argc, char* argv[])
                             != StartupPreset::hw4_task3_depth
                         && options.preset
                             != StartupPreset::hw5_task1_ambient
-                        && options.preset
-                            != StartupPreset::hw5_task2_flat_diffuse);
+                        && !is_hw5_evidence_preset(options.preset));
             }
             if (options.validation == ValidationMode::none
                 || options.validation == ValidationMode::hw4_task1
@@ -2307,22 +2541,19 @@ int main(int argc, char* argv[])
                             == StartupPreset::hw4_task3_color
                         || options.preset
                             == StartupPreset::hw4_task3_depth,
-                    options.preset != StartupPreset::hw5_task1_ambient
-                        && options.preset
-                            != StartupPreset::hw5_task2_flat_diffuse);
+                    !is_hw5_evidence_preset(options.preset));
             }
             if (options.validation == ValidationMode::none
                 || options.validation == ValidationMode::hw5_task1
-                || options.validation == ValidationMode::hw5_task2) {
+                || options.validation == ValidationMode::hw5_task2
+                || options.validation == ValidationMode::hw5_task3) {
                 build_hw5_lighting_window(
                     *ui_context,
                     hw5_lighting,
                     point_light,
                     material,
                     hw5_lighting_initialized,
-                    options.preset == StartupPreset::hw5_task1_ambient
-                        || options.preset
-                            == StartupPreset::hw5_task2_flat_diffuse);
+                    is_hw5_evidence_preset(options.preset));
             }
             mu_end(ui_context.get());
         }
@@ -2334,7 +2565,16 @@ int main(int argc, char* argv[])
             clear_color[3]);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        if (hw5_lighting.show_flat_diffuse != 0
+        if (hw5_lighting.show_specular != 0
+            && lighting_renderer != nullptr) {
+            lighting_renderer->render_specular(
+                viewport_fit,
+                transform_controls,
+                camera,
+                projection,
+                point_light,
+                material);
+        } else if (hw5_lighting.show_flat_diffuse != 0
             && lighting_renderer != nullptr) {
             lighting_renderer->render_flat_diffuse(
                 viewport_fit,
@@ -2385,6 +2625,15 @@ int main(int argc, char* argv[])
                 projection,
                 &mesh,
                 &mesh_normals);
+        }
+        if (hw5_lighting.show_reflection_vectors != 0
+            && lighting_renderer != nullptr) {
+            lighting_renderer->render_reflection_vectors(
+                viewport_fit,
+                transform_controls,
+                camera,
+                projection,
+                point_light);
         }
 
         if (ui_renderer != nullptr) {
@@ -2473,12 +2722,18 @@ int main(int argc, char* argv[])
                     *lighting_renderer,
                     viewport_fit);
                 validation_name = "HW5 Task 1";
-            } else {
+            } else if (options.validation == ValidationMode::hw5_task2) {
                 passed = validate_hw5_task2(
                     mesh,
                     *lighting_renderer,
                     viewport_fit);
                 validation_name = "HW5 Task 2";
+            } else {
+                passed = validate_hw5_task3(
+                    mesh,
+                    *lighting_renderer,
+                    viewport_fit);
+                validation_name = "HW5 Task 3";
             }
             if (passed) {
                 std::cout << validation_name << " validation passed.\n";

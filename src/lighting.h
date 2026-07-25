@@ -13,6 +13,7 @@ struct Material {
     glm::vec3 ambient {0.25F, 0.65F, 0.9F};
     glm::vec3 diffuse {0.25F, 0.65F, 0.9F};
     glm::vec3 specular {1.0F};
+    float shininess = 32.0F;
 };
 
 glm::vec3 calculate_ambient_lighting(
@@ -25,3 +26,16 @@ glm::vec3 calculate_flat_diffuse_lighting(
     const glm::vec3& surface_position,
     const glm::vec3& surface_normal,
     float* diffuse_factor = nullptr);
+
+glm::vec3 calculate_reflection_vector(
+    const glm::vec3& incident,
+    const glm::vec3& surface_normal);
+
+glm::vec3 calculate_phong_lighting(
+    const PointLight& light,
+    const Material& material,
+    const glm::vec3& surface_position,
+    const glm::vec3& surface_normal,
+    const glm::vec3& view_position,
+    float* diffuse_factor = nullptr,
+    float* specular_factor = nullptr);

@@ -12,6 +12,13 @@
 #include <cstddef>
 #include <filesystem>
 
+struct ReflectionVectorCounts {
+    std::size_t incoming = 0;
+    std::size_t reflected = 0;
+
+    [[nodiscard]] std::size_t total() const;
+};
+
 class LightingRenderer {
 public:
     LightingRenderer(
@@ -40,11 +47,37 @@ public:
         const PointLight& light,
         const Material& material) const;
 
+    std::size_t render_specular(
+        const ViewportFit& fit,
+        const TransformControls& transforms,
+        const CameraControls& camera,
+        const ProjectionControls& projection,
+        const PointLight& light,
+        const Material& material) const;
+
+    ReflectionVectorCounts render_reflection_vectors(
+        const ViewportFit& fit,
+        const TransformControls& transforms,
+        const CameraControls& camera,
+        const ProjectionControls& projection,
+        const PointLight& light,
+        std::size_t face_limit = 3) const;
+
     [[nodiscard]] std::size_t triangle_count() const;
 
 private:
+    std::size_t render_flat_lighting(
+        const ViewportFit& fit,
+        const TransformControls& transforms,
+        const CameraControls& camera,
+        const ProjectionControls& projection,
+        const PointLight& light,
+        const Material& material,
+        bool include_specular) const;
+
     ShaderProgram ambient_shader_;
     ShaderProgram flat_diffuse_shader_;
+    ShaderProgram reflection_vector_shader_;
     GLuint vertex_array_ = 0;
     GLuint vertex_buffer_ = 0;
     GLsizei vertex_count_ = 0;
