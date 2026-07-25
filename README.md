@@ -1,7 +1,7 @@
 # NanoRender OpenGL
 
-NanoRender OpenGL is the OpenGL and GLSL GPU port of the
-[original NanoRender CPU course project](https://github.com/xCraftCourses/cg-at-uoh-26-MohammdS).
+NanoRender OpenGL is the OpenGL and GLSL GPU port of the original NanoRender
+CPU course project.
 It reproduces the complete HW2-HW5 graphics pipeline while moving geometry
 processing, rasterization, depth testing, and shading onto the GPU. Each
 section records one completed capability with its validation and visual
