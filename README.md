@@ -309,7 +309,7 @@ Phong shading produces 842 colors and changes 42368 pixels.
 
 ![HW5 Task 4 per-fragment Phong shading](./assets/hw5_task4_phong_shading.jpg)
 
-### Final CPU-to-GPU Comparison
+### CPU-to-GPU Architectural Comparison
 
 The CPU renderer and this OpenGL port implement the same HW2-HW5 progression.
 Their checks agree on the 4-face tetrahedron, coordinate and normal counts, and
@@ -326,14 +326,9 @@ the known lighting cases: ambient RGB `(0.20, 0.20, 0.30)`, diffuse RGB
 | Lighting | C++ evaluates flat and per-pixel Phong lighting | Geometry and fragment shaders evaluate flat and per-fragment lighting |
 | UI and output | MicroUI is rasterized into a 1600 x 1200 CPU color buffer presented by MiniFB | MicroUI, scene color, and depth remain in a 1280 x 720 OpenGL framebuffer presented by GLFW |
 
-The CPU path performs work directly over framebuffer and covered pixels, while
-the OpenGL path submits draw calls and lets dedicated GPU stages rasterize,
-depth-test, interpolate, and shade fragments. This should scale differently as
-scene and pixel workloads grow, but no timing benchmark was run, so this
-comparison does not claim a measured speedup. Pixel counts and the final images
-also differ because the applications use different framebuffer sizes, viewport
-fits, backgrounds, and presentation layers; feature parity here means matching
-pipeline behavior rather than pixel-for-pixel output.
+Pixel counts and the final images differ because the applications use different
+framebuffer sizes, viewport fits, backgrounds, and presentation layers. Feature
+parity here means matching pipeline behavior rather than pixel-for-pixel output.
 
 | Original CPU per-pixel Phong result | OpenGL per-fragment Phong result |
 | :---: | :---: |
@@ -401,9 +396,9 @@ documentation, focused commit, and push are complete.
 - [x] Task 3: Add specular lighting and reflection-vector debugging
 - [x] Task 4: Add per-fragment Phong shading
 
-### Final Comparison
+### CPU-to-GPU Architectural Comparison
 
-- [x] Document the final CPU-to-GPU architecture, behavior, and performance comparison
+- [x] Document the final CPU-to-GPU architectural comparison
 
 Pair-programming extensions are outside this roadmap because they were not part
 of the completed task reports used as the reference for this port.
